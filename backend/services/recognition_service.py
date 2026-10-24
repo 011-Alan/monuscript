@@ -4,7 +4,6 @@ Orchestrates file upload validation, safety checks, inference execution,
 and database persistence.
 """
 
-import os
 import uuid
 from pathlib import Path
 from PIL import Image
@@ -13,35 +12,46 @@ from config import Config
 from ml.inference import MonumentPredictor
 from database.db import add_message, add_recognition_result
 
-def is_allowed_file(filename):
+
+def is_allowed_file(filename: str) -> bool:
     if "." not in filename:
         return False
     ext = filename.rsplit(".", 1)[1].lower()
     return ext in Config.ALLOWED_EXTENSIONS
 
-def validate_and_save_upload(file_storage):
+
+def validate_and_save_upload(file_storage, user_id: str):
     """
-    Validates uploaded file:
+    Validates the uploaded file:
     - Extension check
-    - File size check
-    - Image decode & integrity check
+    - Image integrity check via Pillow
     - Dimension sanity check
-    Saves safely with UUID-based name in Config.UPLOAD_FOLDER.
+
+    Saves the file under a per-user sub-folder:
+        Config.UPLOAD_FOLDER / <user_id> / <uuid>.<ext>
+
     Returns:
-        saved_path, (width, height), mime_type
+        (saved_path: Path, (width, height): tuple, ext: str)
     Raises:
-        ValueError for invalid/corrupted inputs
+        ValueError for invalid/corrupted inputs.
     """
     if not file_storage or not file_storage.filename:
         raise ValueError("No file provided in the request.")
 
     filename = file_storage.filename
     if not is_allowed_file(filename):
-        raise ValueError("That file format isn't supported yet. Please upload a valid image in a supported format (JPEG, PNG, WEBP, BMP, TIFF).")
+        raise ValueError(
+            "That file format isn't supported yet. Please upload a valid image "
+            "in a supported format (JPEG, PNG, WEBP, BMP, TIFF)."
+        )
 
     ext = filename.rsplit(".", 1)[1].lower()
     unique_name = f"{uuid.uuid4().hex}.{ext}"
-    target_path = Config.UPLOAD_FOLDER / unique_name
+
+    # Per-user upload directory
+    user_dir = Config.UPLOAD_FOLDER / user_id
+    user_dir.mkdir(parents=True, exist_ok=True)
+    target_path = user_dir / unique_name
 
     file_storage.save(target_path)
 
@@ -53,7 +63,10 @@ def validate_and_save_upload(file_storage):
             w, h = img.size
             if w > Config.MAX_IMAGE_DIMENSION or h > Config.MAX_IMAGE_DIMENSION:
                 target_path.unlink(missing_ok=True)
-                raise ValueError(f"Image dimensions ({w}x{h}) exceed maximum allowed dimension ({Config.MAX_IMAGE_DIMENSION}px).")
+                raise ValueError(
+                    f"Image dimensions ({w}x{h}) exceed maximum allowed dimension "
+                    f"({Config.MAX_IMAGE_DIMENSION}px)."
+                )
             if w < 32 or h < 32:
                 target_path.unlink(missing_ok=True)
                 raise ValueError("Image is too small to extract reliable architectural features.")
@@ -65,23 +78,36 @@ def validate_and_save_upload(file_storage):
             raise
         raise ValueError("I couldn't open this image. Please try another copy of the file.")
 
-def process_recognition_request(file_storage, conversation_id=None, mode="single"):
+
+def process_recognition_request(
+    file_storage,
+    conversation_id: str = None,
+    mode: str = "single",
+    user_id: str = None,
+):
     """
     Handles end-to-end recognition flow for an uploaded file.
-    If conversation_id is provided, persists user message and assistant response in DB.
+    If conversation_id and user_id are provided, persists the exchange in SQLite.
     """
-    saved_path, (w, h), ext = validate_and_save_upload(file_storage)
+    # user_id is required for per-user upload storage; fall back to 'legacy' if missing
+    effective_user_id = user_id or "legacy"
+
+    saved_path, (w, h), ext = validate_and_save_upload(file_storage, effective_user_id)
+    # URL encodes user sub-folder: /uploads/<filename>  (the route strips the folder)
     image_web_url = f"/uploads/{saved_path.name}"
 
     try:
         predictor = MonumentPredictor.get_instance()
-    except FileNotFoundError as e:
+    except FileNotFoundError:
         return {
             "success": False,
             "status_code": 503,
             "error": {
                 "code": "MODEL_UNAVAILABLE",
-                "message": "The recognition model hasn't been prepared yet. Please complete the model setup described in the project documentation."
+                "message": (
+                    "The recognition model hasn't been prepared yet. "
+                    "Please complete the model setup described in the project documentation."
+                )
             }
         }
     except Exception as e:
@@ -104,23 +130,22 @@ def process_recognition_request(file_storage, conversation_id=None, mode="single
     rec_data["image"]["url"] = image_web_url
 
     # Persist in DB if conversation_id provided
-    if conversation_id:
-        # Add user message
+    if conversation_id and user_id:
         user_msg_id = add_message(
             conv_id=conversation_id,
             role="user",
             content="Uploaded monument photograph for architectural analysis.",
-            image_url=image_web_url
+            image_url=image_web_url,
+            user_id=user_id
         )
-        # Add assistant response message
         asst_msg_id = add_message(
             conv_id=conversation_id,
             role="assistant",
             content=rec_data["message"],
-            image_url=None
+            image_url=None,
+            user_id=user_id
         )
 
-        # Store recognition results
         for item in rec_data.get("results", []):
             add_recognition_result(
                 message_id=asst_msg_id,
@@ -131,7 +156,6 @@ def process_recognition_request(file_storage, conversation_id=None, mode="single
                 metadata_snapshot=item
             )
 
-        # If rejected, persist rejection record as well
         if not rec_data.get("accepted"):
             top_cls = rec_data.get("top_class", "unknown")
             top_sc = rec_data.get("top_score", 0.0)

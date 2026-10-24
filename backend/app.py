@@ -7,7 +7,7 @@ import os
 import sys
 import json
 from pathlib import Path
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, g
 from flask_cors import CORS
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -15,6 +15,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from config import Config
+from auth import require_auth
 from database.db import (
     init_db,
     create_conversation,
@@ -28,12 +29,18 @@ from services.monument_service import get_all_monuments, get_monument_by_id
 from services.recognition_service import process_recognition_request
 from ml.inference import MonumentPredictor
 
+
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
     # Enable CORS for frontend integration
-    CORS(app, resources={r"/api/*": {"origins": "*"}, r"/uploads/*": {"origins": "*"}})
+    cors_origins = (
+        [o.strip() for o in Config.CORS_ORIGINS.split(",") if o.strip()]
+        if Config.CORS_ORIGINS != "*"
+        else "*"
+    )
+    CORS(app, resources={r"/*": {"origins": cors_origins}}, supports_credentials=True)
 
     # Initialize local SQLite database
     init_db()
@@ -43,6 +50,15 @@ def create_app():
         MonumentPredictor.get_instance()
     except Exception as e:
         app.logger.warning(f"Model not loaded at startup: {e}")
+
+    # ==================== Root Health Probe ====================
+
+    @app.route("/", methods=["GET"])
+    def root_ping():
+        return jsonify({
+            "status": "ok",
+            "message": "MonuScript API is live. Use /api/v1/health for details."
+        }), 200
 
     # ==================== Health & Info Endpoints ====================
 
@@ -94,6 +110,7 @@ def create_app():
     # ==================== Recognition Endpoints ====================
 
     @app.route("/api/v1/recognize", methods=["POST"])
+    @require_auth
     def recognize_single():
         if "image" not in request.files:
             return jsonify({
@@ -103,9 +120,15 @@ def create_app():
 
         file_storage = request.files["image"]
         conversation_id = request.form.get("conversation_id")
+        user_id = g.user_id
 
         try:
-            res = process_recognition_request(file_storage, conversation_id=conversation_id, mode="single")
+            res = process_recognition_request(
+                file_storage,
+                conversation_id=conversation_id,
+                mode="single",
+                user_id=user_id
+            )
             status_code = res.pop("status_code", 200)
             return jsonify(res), status_code
         except ValueError as ve:
@@ -120,6 +143,7 @@ def create_app():
             }), 500
 
     @app.route("/api/v1/recognize/multiple", methods=["POST"])
+    @require_auth
     def recognize_multiple():
         if "image" not in request.files:
             return jsonify({
@@ -129,9 +153,15 @@ def create_app():
 
         file_storage = request.files["image"]
         conversation_id = request.form.get("conversation_id")
+        user_id = g.user_id
 
         try:
-            res = process_recognition_request(file_storage, conversation_id=conversation_id, mode="multiple")
+            res = process_recognition_request(
+                file_storage,
+                conversation_id=conversation_id,
+                mode="multiple",
+                user_id=user_id
+            )
             status_code = res.pop("status_code", 200)
             return jsonify(res), status_code
         except ValueError as ve:
@@ -148,26 +178,28 @@ def create_app():
     # ==================== Conversation & Chat Endpoints ====================
 
     @app.route("/api/v1/conversations", methods=["GET"])
+    @require_auth
     def list_conversations():
-        convs = get_conversations()
+        convs = get_conversations(g.user_id)
         return jsonify({"success": True, "conversations": convs}), 200
 
     @app.route("/api/v1/conversations", methods=["POST"])
+    @require_auth
     def create_new_conversation():
         data = request.get_json(silent=True) or {}
         title = data.get("title", "New Exploration")
-        conv = create_conversation(title=title)
+        conv = create_conversation(title=title, user_id=g.user_id)
         return jsonify({"success": True, "conversation": conv}), 201
 
     @app.route("/api/v1/conversations/<conv_id>", methods=["GET"])
+    @require_auth
     def get_conversation_details(conv_id):
-        conv = get_conversation(conv_id)
+        conv = get_conversation(conv_id, g.user_id)
         if not conv:
             return jsonify({
                 "success": False,
                 "error": {"code": "NOT_FOUND", "message": "Conversation not found."}
             }), 404
-
         history = get_conversation_history(conv_id)
         return jsonify({
             "success": True,
@@ -176,8 +208,9 @@ def create_app():
         }), 200
 
     @app.route("/api/v1/conversations/<conv_id>", methods=["PATCH"])
+    @require_auth
     def update_conversation(conv_id):
-        conv = get_conversation(conv_id)
+        conv = get_conversation(conv_id, g.user_id)
         if not conv:
             return jsonify({
                 "success": False,
@@ -192,26 +225,41 @@ def create_app():
                 "error": {"code": "BAD_REQUEST", "message": "Title cannot be empty."}
             }), 400
 
-        updated = rename_conversation(conv_id, new_title.strip())
+        updated = rename_conversation(conv_id, new_title.strip(), g.user_id)
         return jsonify({"success": True, "conversation": updated}), 200
 
     @app.route("/api/v1/conversations/<conv_id>", methods=["DELETE"])
+    @require_auth
     def remove_conversation(conv_id):
-        conv = get_conversation(conv_id)
+        conv = get_conversation(conv_id, g.user_id)
         if not conv:
             return jsonify({
                 "success": False,
                 "error": {"code": "NOT_FOUND", "message": "Conversation not found."}
             }), 404
-
-        delete_conversation(conv_id)
+        delete_conversation(conv_id, g.user_id)
         return jsonify({"success": True, "message": "Conversation deleted successfully."}), 200
 
     # ==================== Upload Static Serving ====================
 
-    @app.route("/uploads/<filename>", methods=["GET"])
+    @app.route("/uploads/<path:filename>", methods=["GET"])
+    @require_auth
     def serve_upload(filename):
-        return send_from_directory(Config.UPLOAD_FOLDER, filename)
+        """
+        Serve uploaded files. Files are stored under UPLOAD_FOLDER/<user_id>/<uuid>.<ext>.
+        Only the owning user may access their files.
+        """
+        user_id = g.user_id
+        user_dir = Config.UPLOAD_FOLDER / user_id
+        # Strip any directory traversal; filename should be a plain filename
+        safe_name = Path(filename).name
+        requested_path = user_dir / safe_name
+        if not requested_path.exists():
+            return jsonify({
+                "success": False,
+                "error": {"code": "NOT_FOUND", "message": "File not found or access denied."}
+            }), 404
+        return send_from_directory(str(user_dir), safe_name)
 
     # ==================== Error Handlers ====================
 
@@ -221,7 +269,7 @@ def create_app():
             "success": False,
             "error": {
                 "code": "FILE_TOO_LARGE",
-                "message": f"Uploaded file exceeds maximum limit ({Config.MAX_CONTENT_LENGTH // (1024*1024)} MB)."
+                "message": f"Uploaded file exceeds maximum limit ({Config.MAX_CONTENT_LENGTH // (1024 * 1024)} MB)."
             }
         }), 413
 
@@ -240,6 +288,7 @@ def create_app():
         }), 500
 
     return app
+
 
 app = create_app()
 

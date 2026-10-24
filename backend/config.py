@@ -18,4 +18,10 @@ class Config:
     PORT = int(os.getenv("PORT", 5000))
     HOST = os.getenv("HOST", "0.0.0.0")
 
+    # Supabase Configuration
+    SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+    SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
+    SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "monuscript-uploads")
+
 Config.UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
