@@ -46,3 +46,10 @@ backend/data/*.db
 .vscode/
 .idea/
 *.swp
+
+# Environment files - never commit real secrets
+.env
+.env.local
+.env.production
+backend/.env
+frontend/.env
