@@ -1,6 +1,7 @@
 import { Conversation, Message, MonumentMetadata, RecognitionResponse, SystemHealth } from '../types';
 
-const API_BASE = '/api/v1';
+const ENV_API = import.meta.env.VITE_API_BASE_URL;
+const API_BASE = ENV_API ? ENV_API.replace(/\/$/, '') : '/api/v1';
 
 export async function fetchHealth(): Promise<SystemHealth> {
   const res = await fetch(`${API_BASE}/health`);
