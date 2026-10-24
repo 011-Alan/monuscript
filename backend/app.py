@@ -1,6 +1,6 @@
 """
 MonuScript - Flask Backend Application
-Versioned RESTful API under /api/v1 for Indian Monument Recognition & Exploration.
+Versioned RESTful API under /api/v1 (with root fallbacks) for Indian Monument Recognition & Exploration.
 """
 
 import os
@@ -34,13 +34,29 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    # Enable CORS for frontend integration
+    # Enable Flask-CORS with comprehensive origins support
     cors_origins = (
         [o.strip() for o in Config.CORS_ORIGINS.split(",") if o.strip()]
         if Config.CORS_ORIGINS != "*"
         else "*"
     )
-    CORS(app, resources={r"/*": {"origins": cors_origins}}, supports_credentials=True)
+    CORS(
+        app,
+        resources={r"/*": {"origins": cors_origins}},
+        supports_credentials=True,
+        allow_headers=["Authorization", "Content-Type", "X-Visitor-Id", "Accept"]
+    )
+
+    # Guarantee CORS headers on every response (especially preflight OPTIONS)
+    @app.after_request
+    def set_cors_headers(response):
+        origin = request.headers.get("Origin")
+        if origin:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-Visitor-Id, Accept"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        return response
 
     # Initialize local SQLite database
     init_db()
@@ -63,6 +79,7 @@ def create_app():
     # ==================== Health & Info Endpoints ====================
 
     @app.route("/api/v1/health", methods=["GET"])
+    @app.route("/health", methods=["GET"])
     def health_check():
         model_loaded = False
         supported_classes = []
@@ -84,6 +101,7 @@ def create_app():
     # ==================== Monument Metadata Endpoints ====================
 
     @app.route("/api/v1/monuments", methods=["GET"])
+    @app.route("/monuments", methods=["GET"])
     def list_monuments():
         monuments = get_all_monuments()
         clean_list = []
@@ -98,6 +116,7 @@ def create_app():
         }), 200
 
     @app.route("/api/v1/monuments/<monument_id>", methods=["GET"])
+    @app.route("/monuments/<monument_id>", methods=["GET"])
     def get_monument(monument_id):
         mon = get_monument_by_id(monument_id)
         if not mon:
@@ -109,9 +128,13 @@ def create_app():
 
     # ==================== Recognition Endpoints ====================
 
-    @app.route("/api/v1/recognize", methods=["POST"])
+    @app.route("/api/v1/recognize", methods=["POST", "OPTIONS"])
+    @app.route("/recognize", methods=["POST", "OPTIONS"])
     @require_auth
     def recognize_single():
+        if request.method == "OPTIONS":
+            return "", 200
+
         if "image" not in request.files:
             return jsonify({
                 "success": False,
@@ -142,9 +165,13 @@ def create_app():
                 "error": {"code": "PROCESSING_ERROR", "message": f"Server error: {str(e)}"}
             }), 500
 
-    @app.route("/api/v1/recognize/multiple", methods=["POST"])
+    @app.route("/api/v1/recognize/multiple", methods=["POST", "OPTIONS"])
+    @app.route("/recognize/multiple", methods=["POST", "OPTIONS"])
     @require_auth
     def recognize_multiple():
+        if request.method == "OPTIONS":
+            return "", 200
+
         if "image" not in request.files:
             return jsonify({
                 "success": False,
@@ -177,23 +204,32 @@ def create_app():
 
     # ==================== Conversation & Chat Endpoints ====================
 
-    @app.route("/api/v1/conversations", methods=["GET"])
+    @app.route("/api/v1/conversations", methods=["GET", "OPTIONS"])
+    @app.route("/conversations", methods=["GET", "OPTIONS"])
     @require_auth
     def list_conversations():
+        if request.method == "OPTIONS":
+            return "", 200
         convs = get_conversations(g.user_id)
         return jsonify({"success": True, "conversations": convs}), 200
 
-    @app.route("/api/v1/conversations", methods=["POST"])
+    @app.route("/api/v1/conversations", methods=["POST", "OPTIONS"])
+    @app.route("/conversations", methods=["POST", "OPTIONS"])
     @require_auth
     def create_new_conversation():
+        if request.method == "OPTIONS":
+            return "", 200
         data = request.get_json(silent=True) or {}
         title = data.get("title", "New Exploration")
         conv = create_conversation(title=title, user_id=g.user_id)
         return jsonify({"success": True, "conversation": conv}), 201
 
-    @app.route("/api/v1/conversations/<conv_id>", methods=["GET"])
+    @app.route("/api/v1/conversations/<conv_id>", methods=["GET", "OPTIONS"])
+    @app.route("/conversations/<conv_id>", methods=["GET", "OPTIONS"])
     @require_auth
     def get_conversation_details(conv_id):
+        if request.method == "OPTIONS":
+            return "", 200
         conv = get_conversation(conv_id, g.user_id)
         if not conv:
             return jsonify({
@@ -207,9 +243,12 @@ def create_app():
             "messages": history
         }), 200
 
-    @app.route("/api/v1/conversations/<conv_id>", methods=["PATCH"])
+    @app.route("/api/v1/conversations/<conv_id>", methods=["PATCH", "OPTIONS"])
+    @app.route("/conversations/<conv_id>", methods=["PATCH", "OPTIONS"])
     @require_auth
     def update_conversation(conv_id):
+        if request.method == "OPTIONS":
+            return "", 200
         conv = get_conversation(conv_id, g.user_id)
         if not conv:
             return jsonify({
@@ -228,9 +267,12 @@ def create_app():
         updated = rename_conversation(conv_id, new_title.strip(), g.user_id)
         return jsonify({"success": True, "conversation": updated}), 200
 
-    @app.route("/api/v1/conversations/<conv_id>", methods=["DELETE"])
+    @app.route("/api/v1/conversations/<conv_id>", methods=["DELETE", "OPTIONS"])
+    @app.route("/conversations/<conv_id>", methods=["DELETE", "OPTIONS"])
     @require_auth
     def remove_conversation(conv_id):
+        if request.method == "OPTIONS":
+            return "", 200
         conv = get_conversation(conv_id, g.user_id)
         if not conv:
             return jsonify({
@@ -242,24 +284,35 @@ def create_app():
 
     # ==================== Upload Static Serving ====================
 
-    @app.route("/uploads/<path:filename>", methods=["GET"])
+    @app.route("/uploads/<path:filename>", methods=["GET", "OPTIONS"])
+    @app.route("/api/v1/uploads/<path:filename>", methods=["GET", "OPTIONS"])
     @require_auth
     def serve_upload(filename):
         """
-        Serve uploaded files. Files are stored under UPLOAD_FOLDER/<user_id>/<uuid>.<ext>.
-        Only the owning user may access their files.
+        Serve uploaded files.
+        Only the owning user may access their files (under UPLOAD_FOLDER/<user_id>/<filename>).
         """
+        if request.method == "OPTIONS":
+            return "", 200
+
         user_id = g.user_id
-        user_dir = Config.UPLOAD_FOLDER / user_id
-        # Strip any directory traversal; filename should be a plain filename
         safe_name = Path(filename).name
+
+        # Check inside user-specific directory
+        user_dir = Config.UPLOAD_FOLDER / user_id
         requested_path = user_dir / safe_name
-        if not requested_path.exists():
-            return jsonify({
-                "success": False,
-                "error": {"code": "NOT_FOUND", "message": "File not found or access denied."}
-            }), 404
-        return send_from_directory(str(user_dir), safe_name)
+        if requested_path.exists():
+            return send_from_directory(str(user_dir), safe_name)
+
+        # Legacy fallback if saved in root UPLOAD_FOLDER
+        root_path = Config.UPLOAD_FOLDER / safe_name
+        if root_path.exists():
+            return send_from_directory(str(Config.UPLOAD_FOLDER), safe_name)
+
+        return jsonify({
+            "success": False,
+            "error": {"code": "NOT_FOUND", "message": "File not found or access denied."}
+        }), 404
 
     # ==================== Error Handlers ====================
 

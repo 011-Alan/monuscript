@@ -93,8 +93,8 @@ def process_recognition_request(
     effective_user_id = user_id or "legacy"
 
     saved_path, (w, h), ext = validate_and_save_upload(file_storage, effective_user_id)
-    # URL encodes user sub-folder: /uploads/<filename>  (the route strips the folder)
-    image_web_url = f"/uploads/{saved_path.name}"
+    # URL includes token param so browser <img> tags can render without custom headers
+    image_web_url = f"/uploads/{saved_path.name}?token={effective_user_id}"
 
     try:
         predictor = MonumentPredictor.get_instance()

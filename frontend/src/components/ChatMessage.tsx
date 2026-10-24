@@ -2,6 +2,7 @@ import React from 'react';
 import { Landmark, User, ExternalLink } from 'lucide-react';
 import { Message, RecognitionCandidate } from '../types';
 import { RecognitionResult } from './RecognitionResult';
+import { formatImageUrl } from '../services/api';
 
 interface ChatMessageProps {
   message: Message;
@@ -62,7 +63,7 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         {message.image_url && (
           <div className="rounded-xl overflow-hidden border border-[#E5DFD7] max-w-sm bg-stone-100 shadow-2xs">
             <img
-              src={message.image_url}
+              src={formatImageUrl(message.image_url)}
               alt="Uploaded monument"
               className="w-full h-auto max-h-72 object-contain bg-stone-900/5"
             />

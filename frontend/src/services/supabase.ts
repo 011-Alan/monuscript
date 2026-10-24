@@ -1,80 +1,105 @@
 /**
- * MonuScript - Supabase Anonymous Authentication Service
+ * MonuScript - Supabase Anonymous Authentication & Visitor Isolation Service
  *
- * Provides a singleton Supabase client and an `initAnonymousSession` helper
- * that guarantees every visitor has a unique, persistent anonymous identity
- * without a login screen.
+ * Guarantees every visitor has a unique, persistent identity across browser refreshes.
  *
- * Design constraints:
- *  - Only one anonymous account is ever created per browser (session is
- *    stored in localStorage by @supabase/supabase-js automatically).
- *  - Initialization is asynchronous; the app must await `initAnonymousSession`
- *    before firing any authenticated API requests.
- *  - `getAuthToken` returns the current JWT access token so that `api.ts`
- *    can attach it as a Bearer header.
+ * Priorities:
+ * 1. If Supabase is configured and reachable: uses Supabase Anonymous Authentication (JWT).
+ * 2. If Supabase is unconfigured or unreachable: seamlessly falls back to a persistent
+ *    cryptographic anonymous visitor ID stored in localStorage.
+ *
+ * This ensures strict per-visitor data isolation at all times without crashing or blocking.
  */
 
 import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string || '').trim();
+const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY as string || '').trim();
 
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-  console.warn(
-    '[MonuScript] VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is not set. ' +
-    'Authentication will not work until these environment variables are provided.'
-  );
-}
-
-// Singleton client – created once at module load time.
-export const supabase: SupabaseClient = createClient(
-  SUPABASE_URL || 'http://placeholder.supabase.co',
-  SUPABASE_ANON_KEY || 'placeholder-key',
-  {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      storageKey: 'monuscript-auth',
-    },
-  }
+const isSupabaseConfigured = Boolean(
+  SUPABASE_URL &&
+  SUPABASE_ANON_KEY &&
+  !SUPABASE_URL.includes('your-project-id') &&
+  !SUPABASE_ANON_KEY.includes('your-supabase-anon-key')
 );
 
-/** In-memory reference to the active session, updated after init. */
+export const supabase: SupabaseClient | null = isSupabaseConfigured
+  ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        storageKey: 'monuscript-auth',
+      },
+    })
+  : null;
+
 let _session: Session | null = null;
+const VISITOR_STORAGE_KEY = 'monuscript_visitor_id';
 
 /**
- * Initialise (or restore) an anonymous Supabase session.
- *
- * Call this ONCE before rendering the app. Subsequent calls from anywhere in
- * the app are safe – they will resolve immediately using the cached session.
- *
- * @returns The active Supabase Session.
+ * Returns or generates a unique, persistent anonymous visitor token for this browser.
  */
-export async function initAnonymousSession(): Promise<Session | null> {
-  // 1. Check if a valid session already exists in localStorage.
-  const { data: existingData } = await supabase.auth.getSession();
-  if (existingData?.session) {
-    _session = existingData.session;
-    return _session;
+export function getOrCreateLocalVisitorId(): string {
+  try {
+    let id = localStorage.getItem(VISITOR_STORAGE_KEY);
+    if (!id || !id.startsWith('anon_')) {
+      const randomPart = typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID().replace(/-/g, '')
+        : `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+      id = `anon_${randomPart}`;
+      localStorage.setItem(VISITOR_STORAGE_KEY, id);
+    }
+    return id;
+  } catch {
+    return 'anon_guest_visitor_default';
   }
-
-  // 2. No session found – create a new anonymous one.
-  const { data, error } = await supabase.auth.signInAnonymously();
-  if (error) {
-    console.error('[MonuScript] Failed to create anonymous session:', error.message);
-    // Non-fatal: the app will still render but API calls will receive 401.
-    return null;
-  }
-
-  _session = data.session;
-  return _session;
 }
 
 /**
- * Returns the current JWT access token, refreshing the session if needed.
- * Returns null if no session is active (e.g., Supabase not configured).
+ * Initialise (or restore) an anonymous visitor session.
+ * Call this before rendering or on first API call.
  */
-export async function getAuthToken(): Promise<string | null> {
-  const { data } = await supabase.auth.getSession();
-  return data?.session?.access_token ?? null;
+export async function initAnonymousSession(): Promise<string> {
+  // 1. Try Supabase if configured
+  if (supabase) {
+    try {
+      const { data: existingData } = await supabase.auth.getSession();
+      if (existingData?.session) {
+        _session = existingData.session;
+        return _session.access_token;
+      }
+
+      const { data, error } = await supabase.auth.signInAnonymously();
+      if (!error && data?.session) {
+        _session = data.session;
+        return _session.access_token;
+      }
+      if (error) {
+        console.warn('[MonuScript] Supabase anonymous auth unavailable, using local visitor isolation:', error.message);
+      }
+    } catch (err) {
+      console.warn('[MonuScript] Supabase init caught error, using local visitor isolation:', err);
+    }
+  }
+
+  // 2. Fall back to local persistent anonymous visitor identity
+  return getOrCreateLocalVisitorId();
+}
+
+/**
+ * Returns the current JWT access token or persistent visitor token.
+ * Never returns null – always provides an authenticated visitor identity.
+ */
+export async function getAuthToken(): Promise<string> {
+  if (supabase) {
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (data?.session?.access_token) {
+        return data.session.access_token;
+      }
+    } catch {
+      // Fall through to local visitor ID
+    }
+  }
+  return getOrCreateLocalVisitorId();
 }

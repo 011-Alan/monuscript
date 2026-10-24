@@ -113,13 +113,25 @@ export const App: React.FC = () => {
   };
 
   const handleUploadImage = async (file: File) => {
-    if (!activeConvId) return;
     setIsLoading(true);
+
+    let targetConvId = activeConvId;
+    if (!targetConvId) {
+      try {
+        const newConv = await api.createConversation('New Monument Exploration');
+        setConversations(prev => [newConv, ...prev]);
+        setActiveConvId(newConv.id);
+        targetConvId = newConv.id;
+      } catch {
+        targetConvId = `conv_${Date.now()}`;
+        setActiveConvId(targetConvId);
+      }
+    }
 
     try {
       const response = await api.recognizeImage(
         file,
-        activeConvId,
+        targetConvId,
         multiMode ? 'multiple' : 'single'
       );
 
@@ -128,29 +140,65 @@ export const App: React.FC = () => {
       }
 
       // Re-fetch message history to guarantee full synchronization with SQLite database
-      const details = await api.fetchConversationDetails(activeConvId);
-      setMessages(details.messages);
+      try {
+        const details = await api.fetchConversationDetails(targetConvId);
+        setMessages(details.messages);
+      } catch {
+        // Optimistic UI fallback if conversation detail fetch fails
+        if (response.message) {
+          setMessages(prev => [
+            ...prev,
+            {
+              id: 'user-' + Date.now(),
+              conversation_id: targetConvId!,
+              role: 'user',
+              content: 'Uploaded monument photograph for architectural analysis.',
+              image_url: response.image?.url || null,
+              created_at: new Date().toISOString()
+            },
+            {
+              id: 'asst-' + Date.now(),
+              conversation_id: targetConvId!,
+              role: 'assistant',
+              content: response.message,
+              image_url: null,
+              created_at: new Date().toISOString(),
+              results: (response.results || []).map((r: any) => ({
+                id: 'res-' + Math.random(),
+                monument_id: r.monument_id,
+                score: r.score,
+                score_type: r.score_type || 'recognition_score',
+                accepted: true,
+                metadata: r
+              }))
+            }
+          ]);
+        }
+      }
 
       // Auto-update conversation title if it was default
-      const currentConv = conversations.find(c => c.id === activeConvId);
+      const currentConv = conversations.find(c => c.id === targetConvId);
       if (currentConv && currentConv.title === 'New Monument Exploration' && response.top_class) {
         const readableTitle = response.top_class.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-        handleRename(activeConvId, `${readableTitle} Exploration`);
+        handleRename(targetConvId, `${readableTitle} Exploration`);
       }
     } catch (err: any) {
       console.error('Recognition error:', err);
       // Append local system error message
+      const errorText = err.message || "MonuScript is having trouble reaching the recognition service. Please check your backend connection.";
       setMessages(prev => [
         ...prev,
         {
           id: 'error-' + Date.now(),
-          conversation_id: activeConvId,
+          conversation_id: targetConvId || 'default',
           role: 'assistant',
-          content: "MonuScript is having trouble reaching the recognition service. Please check your backend connection.",
+          content: `⚠️ Recognition issue: ${errorText}`,
           image_url: null,
           created_at: new Date().toISOString()
         }
       ]);
+      // Re-throw so ImageUploader knows not to clear the preview and can show the error banner
+      throw err;
     } finally {
       setIsLoading(false);
       setTimeout(() => {
