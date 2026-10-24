@@ -1,0 +1,117 @@
+{
+  "evaluation_timestamp": "2026-10-24 17:03:03",
+  "test_samples_count": 24,
+  "test_accuracy": 0.5417,
+  "correct_acceptance_rate": 0.6154,
+  "false_rejection_rate": 0.3846,
+  "negative_samples_count": 15,
+  "false_acceptance_rate": 0.6667,
+  "true_rejection_rate": 0.3333,
+  "mean_latency_ms": 77.71,
+  "confusion_matrix": {
+    "classes": [
+      "charminar",
+      "hawa_mahal",
+      "india_gate",
+      "qutub_minar",
+      "red_fort",
+      "taj_mahal"
+    ],
+    "matrix": [
+      [
+        3,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        4,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        2,
+        0,
+        0,
+        1
+      ],
+      [
+        1,
+        1,
+        0,
+        1,
+        0,
+        1
+      ],
+      [
+        0,
+        0,
+        3,
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        1,
+        3
+      ]
+    ]
+  },
+  "per_class_metrics": {
+    "charminar": {
+      "precision": 0.75,
+      "recall": 0.75,
+      "f1-score": 0.75,
+      "support": 4.0
+    },
+    "hawa_mahal": {
+      "precision": 0.5714285714285714,
+      "recall": 1.0,
+      "f1-score": 0.7272727272727273,
+      "support": 4.0
+    },
+    "india_gate": {
+      "precision": 0.4,
+      "recall": 0.5,
+      "f1-score": 0.4444444444444444,
+      "support": 4.0
+    },
+    "qutub_minar": {
+      "precision": 0.5,
+      "recall": 0.25,
+      "f1-score": 0.3333333333333333,
+      "support": 4.0
+    },
+    "red_fort": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 4.0
+    },
+    "taj_mahal": {
+      "precision": 0.6,
+      "recall": 0.75,
+      "f1-score": 0.6666666666666666,
+      "support": 4.0
+    }
+  },
+  "robustness_accuracy": {
+    "brightness_darker": 0.375,
+    "brightness_brighter": 0.5833,
+    "contrast_lower": 0.5417,
+    "contrast_higher": 0.5,
+    "gamma_compressed": 0.4583,
+    "gamma_expanded": 0.5417
+  }
+}

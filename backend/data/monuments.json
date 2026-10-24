@@ -1,0 +1,116 @@
+{
+  "taj_mahal": {
+    "id": "taj_mahal",
+    "name": "Taj Mahal",
+    "location": "Agra, Uttar Pradesh, India",
+    "description": "An ivory-white marble mausoleum on the south bank of the Yamuna river, recognized worldwide as a masterpiece of Mughal architecture.",
+    "historical_details": [
+      "Commissioned in 1631 by Mughal Emperor Shah Jahan in memory of his favorite wife Mumtaz Mahal.",
+      "Chief architect was Ustad Ahmad Lahori; construction completed around 1648-1653.",
+      "Design incorporates symmetrical gardens (charbagh), a grand central dome surrounded by four smaller chattris, and four free-standing minarets tilted slightly outward.",
+      "Designated as a UNESCO World Heritage Site in 1983."
+    ],
+    "architectural_style": "Mughal Architecture (Islamic, Persian, and Indian synthesis)",
+    "built_in": "1631 - 1648 CE",
+    "builder": "Emperor Shah Jahan",
+    "key_features": ["White Makrana Marble", "Central Onion Dome", "Four Corner Minarets", "Calligraphy Inscriptions", "Pietra Dura Inlay"],
+    "model_url": "https://sketchfab.com/models/31f472856276412190ee0d5921c54b23/embed",
+    "reference_images": ["taj_mahal_ref.jpg"],
+    "supported": true
+  },
+  "qutub_minar": {
+    "id": "qutub_minar",
+    "name": "Qutub Minar",
+    "location": "Mehrauli, Southwest Delhi, India",
+    "description": "A 72.5-meter tall minaret constructed of red sandstone and marble, forming part of the UNESCO Qutub complex.",
+    "historical_details": [
+      "Construction initiated by Qutb-ud-din Aibak around 1199 CE to commemorate victory and serve as a minaret for the adjacent Quwwat-ul-Islam mosque.",
+      "Subsequent storeys added by his successor Shams-ud-din Iltutmish, and later repaired by Firuz Shah Tughlaq after lightning strikes.",
+      "Features distinctive fluted cylindrical and angular stone shafts adorned with Nagari and Arabic calligraphic inscriptions.",
+      "Contains 379 spiral staircase steps leading through five tapering storeys with cantilevered balconies."
+    ],
+    "architectural_style": "Indo-Islamic Architecture (Ghurid / Mamluk style)",
+    "built_in": "1199 - 1220 CE",
+    "builder": "Qutb-ud-din Aibak & Shams-ud-din Iltutmish",
+    "key_features": ["Fluted Sandstone Columns", "Balconied Storeys", "Arabic Inscriptions", "Quwwat-ul-Islam Complex", "Iron Pillar Proximity"],
+    "model_url": "https://sketchfab.com/models/bf041ca46f6f4077876a4df927b2c5e5/embed",
+    "reference_images": ["qutub_minar_ref.jpg"],
+    "supported": true
+  },
+  "red_fort": {
+    "id": "red_fort",
+    "name": "Red Fort (Lal Qila)",
+    "location": "Old Delhi, Delhi, India",
+    "description": "A historic fort complex enclosed by massive red sandstone defensive walls, serving as the ceremonial residence of Mughal emperors for nearly two centuries.",
+    "historical_details": [
+      "Commissioned by Mughal Emperor Shah Jahan in 1638 when deciding to shift his capital from Agra to Delhi (Shahjahanabad).",
+      "Designed by architect Ustad Ahmad Lahori, blending Timurid, Persian, and Hindu architectural traditions.",
+      "Home to famous structures such as the Diwan-i-Aam (Hall of Public Audience), Diwan-i-Khas (Hall of Private Audience), and Lahori Gate.",
+      "The Prime Minister of India hoists the national flag at the Lahori Gate every Independence Day (August 15)."
+    ],
+    "architectural_style": "Mughal Fortified Architecture",
+    "built_in": "1638 - 1648 CE",
+    "builder": "Emperor Shah Jahan",
+    "key_features": ["Red Sandstone Ramparts", "Lahori Gate", "Diwan-i-Khas", "Chattri Pavilions", "Chhatta Chowk Bazaar"],
+    "model_url": "https://sketchfab.com/models/a5113eb76fe44747b0a7dbf7e34ea7eb/embed",
+    "reference_images": ["red_fort_ref.jpg"],
+    "supported": true
+  },
+  "india_gate": {
+    "id": "india_gate",
+    "name": "India Gate",
+    "location": "Rajpath (Kartavya Path), New Delhi, India",
+    "description": "A 42-meter high triumphal arch war memorial honoring 84,000 soldiers of the British Indian Army who died between 1914 and 1921.",
+    "historical_details": [
+      "Designed by British architect Sir Edwin Lutyens, inspired by the Arch of Constantine in Rome and Arc de Triomphe in Paris.",
+      "Foundation stone laid in February 1921 by the Duke of Connaught; inaugurated in February 1931 by Viceroy Lord Irwin.",
+      "Inscribed with the names of over 13,300 servicemen on its pale red and yellow Bharatpur sandstone surfaces.",
+      "The Amar Jawan Jyoti (Flame of the Immortal Soldier) beneath the arch commemorated fallen soldiers since 1971."
+    ],
+    "architectural_style": "Triumphal Arch (Neo-Classical / Edwardian Imperial)",
+    "built_in": "1921 - 1931 CE",
+    "builder": "Designed by Sir Edwin Lutyens",
+    "key_features": ["Pale Red & Yellow Sandstone Arch", "Inscribed Soldier Memorials", "Central Vault Opening", "Canopy Proximity", "Amar Jawan Cenotaph"],
+    "model_url": "https://sketchfab.com/models/ca6c729e248b48fca8b479374ee794f3/embed",
+    "reference_images": ["india_gate_ref.jpg"],
+    "supported": true
+  },
+  "charminar": {
+    "id": "charminar",
+    "name": "Charminar",
+    "location": "Hyderabad, Telangana, India",
+    "description": "A square monument and mosque built in 1591 with four ornate 48.7-meter minarets, serving as the iconic symbol of Hyderabad.",
+    "historical_details": [
+      "Constructed by Muhammad Quli Qutb Shah, fifth ruler of the Qutb Shahi dynasty, to commemorate the end of a devastating plague in the city.",
+      "Located at the intersection of the historical trade route connecting Golconda fort with the port city of Machilipatnam.",
+      "Structure features four grand arches facing the cardinal directions, each supporting a 4-storey minaret with double carved balconies.",
+      "The top floor houses the oldest surviving mosque in Hyderabad."
+    ],
+    "architectural_style": "Indo-Islamic (Qutb Shahi with Persian & Hindu accents)",
+    "built_in": "1591 CE",
+    "builder": "Sultan Muhammad Quli Qutb Shah",
+    "key_features": ["Four 48.7m Minarets", "Granite & Mortar Archways", "Upper Level Mosque", "Double Balconies", "Clock Dials (added 1889)"],
+    "model_url": "https://sketchfab.com/models/2d2fe62f1da94d3f95e2ca70997ee486/embed",
+    "reference_images": ["charminar_ref.jpg"],
+    "supported": true
+  },
+  "hawa_mahal": {
+    "id": "hawa_mahal",
+    "name": "Hawa Mahal (Palace of Winds)",
+    "location": "Jaipur, Rajasthan, India",
+    "description": "A five-storey pink and red sandstone palace renowned for its honeycomb facade with 953 finely carved jharokhas (small casements).",
+    "historical_details": [
+      "Built in 1799 by Maharaja Sawai Pratap Singh and designed by Lal Chand Ustad.",
+      "Designed in the form of the crown of Lord Krishna, to whom the Maharaja was devoted.",
+      "The 953 screened windows allowed royal women to observe street festivals without being seen from outside (Purdah tradition).",
+      "Engineered with natural venturi air cooling principles, giving it the name 'Palace of Winds' due to cool breezes circulating through the chambers."
+    ],
+    "architectural_style": "Rajput Architecture (blend of Hindu Rajput and Islamic Mughal)",
+    "built_in": "1799 CE",
+    "builder": "Maharaja Sawai Pratap Singh",
+    "key_features": ["953 Casement Windows (Jharokhas)", "Honeycomb Facade", "Pink & Red Sandstone", "Venturi Cooling Channels", "Krishna Crown Geometry"],
+    "model_url": "https://sketchfab.com/models/8333bc7b79874cb3bdf1e8eeb67823e4/embed",
+    "reference_images": ["hawa_mahal_ref.jpg"],
+    "supported": true
+  }
+}
