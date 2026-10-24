@@ -32,7 +32,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             {title}
           </h1>
           <p className="text-[11px] text-[#667268] hidden sm:block">
-            Image Processing Syllabus Pipeline & SVM Exploration
+            Image Processing Pipeline & SVM Exploration
           </p>
         </div>
       </div>
