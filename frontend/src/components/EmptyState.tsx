@@ -26,7 +26,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ onOpenSupportedModal }) 
       {/* Main Title */}
       <div className="space-y-2">
         <h2 className="font-serif text-2xl md:text-3xl font-bold text-[#1F2923]">
-          Syllabus-Based Indian Monument Exploration
+          Indian Monument Exploration
         </h2>
         <p className="text-sm md:text-base text-stone-600 max-w-lg mx-auto">
           Upload any photograph of a supported Indian heritage monument. The system extracts deterministic mathematical features and evaluates them using a trained Support Vector Machine.
