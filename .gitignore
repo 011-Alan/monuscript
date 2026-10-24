@@ -41,6 +41,7 @@ backend/data/*.db
 *.log
 .env
 .env.*.local
+.env.example
 
 # IDE
 .vscode/
