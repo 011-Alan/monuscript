@@ -1,8 +1,8 @@
 {
   "model_type": "SupportVectorMachine",
   "library": "scikit-learn",
-  "created_at": "2026-10-25 11:10:30",
-  "training_duration_seconds": 11.09,
+  "created_at": "2026-10-25 13:15:04",
+  "training_duration_seconds": 9.25,
   "supported_classes": [
     "charminar",
     "hawa_mahal",
@@ -30,9 +30,9 @@
     "include_wavelet": false,
     "include_shape": false,
     "rejection_config": {
-      "accept_threshold": 0.48,
-      "margin_threshold": 0.18,
-      "uncertain_threshold": 0.32
+      "accept_threshold": 0.42,
+      "margin_threshold": 0.12,
+      "uncertain_threshold": 0.28
     }
   },
   "samples_per_split": {

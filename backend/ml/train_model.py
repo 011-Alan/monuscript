@@ -99,9 +99,9 @@ def train_and_tune_model(
 ):
     if rejection_config is None:
         rejection_config = {
-            "accept_threshold": 0.48,
-            "margin_threshold": 0.18,
-            "uncertain_threshold": 0.32
+            "accept_threshold": 0.42,
+            "margin_threshold": 0.12,
+            "uncertain_threshold": 0.28
         }
 
     start_time = time.time()
