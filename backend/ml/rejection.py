@@ -10,6 +10,7 @@ import numpy as np
 DEFAULT_ACCEPT_THRESHOLD = 0.40      # Minimum calibrated recognition score for acceptance
 DEFAULT_MARGIN_THRESHOLD = 0.12      # Minimum difference between top-1 and top-2 candidate
 DEFAULT_UNCERTAIN_THRESHOLD = 0.28   # Below this is outright rejection; between this and accept is uncertain
+DEFAULT_MAX_CENTROID_DISTANCE = 17.0 # Maximum Euclidean distance in scaled space to predicted class centroid
 
 REJECTION_MESSAGE = (
     "Oh my! Haven't seen this one before! 🧐\n\n"
@@ -29,11 +30,13 @@ class RejectionJudge:
         accept_threshold=DEFAULT_ACCEPT_THRESHOLD,
         margin_threshold=DEFAULT_MARGIN_THRESHOLD,
         uncertain_threshold=DEFAULT_UNCERTAIN_THRESHOLD,
+        max_centroid_distance=DEFAULT_MAX_CENTROID_DISTANCE,
         class_centroids=None
     ):
         self.accept_threshold = accept_threshold
         self.margin_threshold = margin_threshold
         self.uncertain_threshold = uncertain_threshold
+        self.max_centroid_distance = max_centroid_distance
         self.class_centroids = class_centroids  # dict of class_id -> mean feature vector in scaled space
 
     def evaluate(self, probabilities, class_names, scaled_features=None):
@@ -52,6 +55,7 @@ class RejectionJudge:
                 "runner_up_class": str or None,
                 "runner_up_score": float or None,
                 "score_margin": float,
+                "centroid_distance": float or None,
                 "rejection_reason": str or None,
                 "message": str
             }
@@ -73,15 +77,21 @@ class RejectionJudge:
             runner_score = 0.0
             margin = top_score
 
-        # Out-of-distribution distance check if centroids are provided
+        # Out-of-distribution distance check & distance-based score calibration
         is_ood = False
+        centroid_dist = None
         if self.class_centroids is not None and scaled_features is not None:
             centroid = self.class_centroids.get(top_class)
             if centroid is not None:
-                dist = np.linalg.norm(scaled_features - centroid)
-                # If distance exceeds 3 standard deviations in feature space (approx dist > 20.0 for 139 dims)
-                if dist > 22.0:
+                centroid_dist = float(np.linalg.norm(scaled_features - centroid))
+                if centroid_dist > self.max_centroid_distance:
                     is_ood = True
+                elif centroid_dist > 14.0:
+                    # Soft penalty for boundary outliers to prevent inflated linear SVM scores
+                    ratio = (centroid_dist - 14.0) / max(0.1, self.max_centroid_distance - 14.0)
+                    penalty = 1.0 - 0.6 * min(1.0, ratio)
+                    top_score = float(top_score * penalty)
+                    margin = max(0.0, top_score - (runner_score or 0.0))
 
         # Decision rules
         if is_ood or top_score < self.uncertain_threshold:
@@ -93,6 +103,7 @@ class RejectionJudge:
                 "runner_up_class": runner_class,
                 "runner_up_score": runner_score,
                 "score_margin": margin,
+                "centroid_distance": centroid_dist,
                 "rejection_reason": "out_of_distribution" if is_ood else "low_confidence",
                 "message": REJECTION_MESSAGE
             }
@@ -107,6 +118,7 @@ class RejectionJudge:
                 "runner_up_class": runner_class,
                 "runner_up_score": runner_score,
                 "score_margin": margin,
+                "centroid_distance": centroid_dist,
                 "rejection_reason": "ambiguous_margin" if margin < self.margin_threshold else "below_accept_threshold",
                 "message": UNCERTAIN_MESSAGE_TEMPLATE.format(candidate=top_class.replace("_", " ").title(), score=top_score)
             }
@@ -120,6 +132,7 @@ class RejectionJudge:
             "runner_up_class": runner_class,
             "runner_up_score": runner_score,
             "score_margin": margin,
+            "centroid_distance": centroid_dist,
             "rejection_reason": None,
             "message": f"Successfully identified {top_class.replace('_', ' ').title()} with recognition score {top_score:.1%}."
         }
