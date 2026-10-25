@@ -157,8 +157,99 @@ This document provides a rigorous, syllabus-aligned mathematical breakdown of ev
 
 ---
 
-## 7. Complete Feature Vector Summary
+## 7. Contrast-Limited Adaptive Histogram Equalization (CLAHE)
+* **Location in Code:** `backend/image_processing/preprocessing.py` -> `apply_clahe_enhancement()`
+* Subdivides the image into $M_B \times N_B$ non-overlapping contextual grid blocks ($8 \times 8$).
+* Computes local histograms for each tile and clips histogram bin heights at threshold $\beta_{\text{clip}} = 2.0$:
+  $$h_{\text{clipped}}(k) = \min(h(k), \beta_{\text{clip}})$$
+* Redistributes excess clipped pixels uniformly across all $L = 256$ gray levels before performing local CDF transformation.
+* Merges adjacent tile boundaries using bilinear interpolation to eliminate artificial boundary seams.
 
-$$\mathbf{x} = [\mathbf{h}_{\text{hist (40)}} \,\|\, \mathbf{h}_{\text{edge (36)}} \,\|\, \mathbf{h}_{\text{texture (31)}} \,\|\, \mathbf{h}_{\text{color (32)}}]^T \in \mathbb{R}^{139}$$
+---
+
+## 8. Monument-Specific Architectural Descriptors
+* **Location in Code:** `backend/image_processing/architectural_features.py` -> `extract_architectural_features()`
+
+1. **Central Arch Void Contrast Ratio ($V_{\text{arch}}$):**
+   $$V_{\text{arch}} = \frac{\bar{I}_{\text{center}} - \bar{I}_{\text{pylons}}}{\bar{I}_{\text{center}} + \bar{I}_{\text{pylons}} + \epsilon}$$
+   Measures luminance contrast between the open central aperture and the solid flanking stone pylons of India Gate.
+
+2. **Upper Cornice Horizontal Dominance ($C_{\text{cornice}}$):**
+   $$C_{\text{cornice}} = \frac{\sum |G_y^{\text{upper}}| - \sum |G_x^{\text{upper}}|}{\sum |G_y^{\text{upper}}| + \sum |G_x^{\text{upper}}| + \epsilon}$$
+   Quantifies the prominent horizontal attic/entablature of India Gate.
+
+3. **Arch Header Curvature Energy ($E_{\text{header}}$):**
+   $$E_{\text{header}} = \frac{1}{|\Omega_{\text{arch}}|} \sum_{(x,y) \in \Omega_{\text{arch}}} G(x, y)$$
+   Mean Sobel gradient magnitude along the semicircular arch curve.
+
+4. **Conical Tapering Ratio ($R_{\text{taper}}$):**
+   $$R_{\text{taper}} = \frac{w_{\text{top}}}{w_{\text{base}} + \epsilon}$$
+   Measures the characteristic tapering diameter of Qutub Minar from base to apex.
+
+5. **Vertical Shaft Gradient Dominance ($V_{\text{shaft}}$):**
+   $$V_{\text{shaft}} = \frac{\sum |G_x^{\text{mid}}| - \sum |G_y^{\text{mid}}|}{\sum |G_x^{\text{mid}}| + \sum |G_y^{\text{mid}}| + \epsilon}$$
+   Encodes the vertical flute lines of Qutub Minar's shaft.
+
+6. **Solid Central Masonry Continuity ($M_{\text{center}}$):**
+   $$M_{\text{center}} = \frac{\bar{G}_{\text{center column}}}{\bar{G}_{\text{full image}} + \epsilon}$$
+
+7. **Jharokha Window Opening Density ($D_{\text{jharokha}}$):**
+   $$D_{\text{jharokha}} = \frac{1}{|\Omega_{\text{facade}}|} \sum_{(x,y) \in \Omega_{\text{facade}}} \mathbb{I}\left(\text{TopHat}_{7\times 7}(I)(x,y) > T_{\text{dark}}\right)$$
+   Uses morphological Black Top-Hat filtering to count small recessed window openings characteristic of Hawa Mahal.
+
+8. **Honeycomb Facade Grid Heterogeneity ($H_{\text{grid}}$):**
+   Spatial variance of local standard deviation across the central facade grid.
+
+9. **Dome Circularity Profile ($C_{\text{dome}}$):**
+   Circular Hough Transform accumulator response ($cv2.HOUGH\_GRADIENT$) in the upper quadrant for Taj Mahal's central onion dome.
+
+10. **White Marble Spectral Ratio ($W_{\text{marble}}$):**
+    $$W_{\text{marble}} = \frac{1}{MN} \sum_{x,y} \mathbb{I}(V(x,y) > 160 \;\land\; S(x,y) < 65)$$
+
+11. **Bilateral Reflection Symmetry Score ($S_{\text{bilat}}$):**
+    $$S_{\text{bilat}} = 1.0 - \frac{1}{M \cdot (N/2)} \sum_{x=0}^{M-1} \sum_{y=0}^{N/2 - 1} |I(x, y) - I(x, N - 1 - y)|$$
+
+12. **Four-Corner Structural Balance ($B_{\text{corners}}$):**
+    Normalized inverse standard deviation of gradient energies across the four outer image corners (Charminar minaret symmetry).
+
+13. **Horizontal Curtain Wall Continuity ($W_{\text{curtain}}$):**
+    Morphological linear opening with horizontal structuring element ($17 \times 1$) detecting long fortress ramparts (Red Fort).
+
+14. **Sandstone Warmth Index ($I_{\text{warmth}}$):**
+    $$I_{\text{warmth}} = \frac{1}{MN} \sum_{x,y} \frac{R(x,y) - B(x,y)}{R(x,y) + G(x,y) + B(x,y) + \epsilon}$$
+
+15. **Central Aperture Edge Contrast ($K_{\text{aperture}}$):**
+    Contrast between inner arch opening contours and exterior masonry boundaries.
+
+16. **Vertical Slenderness Aspect Ratio ($A_{\text{slender}}$):**
+    Bounding mass height divided by base width.
+
+---
+
+## 9. Machine Learning (SVM) & Probability Calibration Formulas
+* **Location in Code:** `backend/ml/train_model.py`, `backend/ml/inference.py`
+
+### 9.1 Support Vector Machine RBF Dual Formulation
+$$\max_{\boldsymbol{\alpha}} \sum_{i=1}^n \alpha_i - \frac{1}{2} \sum_{i=1}^n \sum_{j=1}^n \alpha_i \alpha_j y_i y_j K(\mathbf{z}_i, \mathbf{z}_j)$$
+subject to:
+$$0 \le \alpha_i \le C, \quad \sum_{i=1}^n \alpha_i y_i = 0$$
+where $K(\mathbf{z}_i, \mathbf{z}_j) = \exp(-\gamma \|\mathbf{z}_i - \mathbf{z}_j\|^2)$, $C = 2.0$, and standardized features $\mathbf{z} = \frac{\mathbf{x} - \boldsymbol{\mu}}{\boldsymbol{\sigma}}$.
+
+### 9.2 Platt Scaling Probability Calibration
+Transforms uncalibrated decision function scores $f_k(\mathbf{x})$ into well-calibrated class posterior probabilities:
+$$P(y = k \mid \mathbf{x}) = \frac{1}{1 + \exp(A \cdot f_k(\mathbf{x}) + B)}$$
+Parameters $A$ and $B$ are estimated by maximum likelihood via 5-fold cross-validation on the training set.
+
+### 9.3 Multi-Tier Rejection Filter
+A prediction is accepted if and only if:
+1. $P_{(1)} \ge 0.42$ (minimum confidence)
+2. $P_{(1)} - P_{(2)} \ge 0.12$ (decision margin)
+3. $\|\mathbf{z} - \mathbf{c}_{k^*}\|_2 \le \tau_{\text{dist}}$ (in-distribution centroid distance)
+
+---
+
+## 10. Complete Feature Vector Summary
+
+$$\mathbf{x} = [\mathbf{h}_{\text{hist (40)}} \,\|\, \mathbf{h}_{\text{edge (36)}} \,\|\, \mathbf{h}_{\text{texture (31)}} \,\|\, \mathbf{h}_{\text{color (32)}} \,\|\, \mathbf{h}_{\text{arch (16)}}]^T \in \mathbb{R}^{155}$$
 
 Every feature is deterministic, fixed-length, and computed in identical order during training and inference.
