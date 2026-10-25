@@ -1,0 +1,127 @@
+{
+  "experiment_id": "E0",
+  "name": "Existing Baseline (DIP 139D + Linear SVM)",
+  "timestamp": "2026-10-25 10:58:59",
+  "feature_dimension": 139,
+  "training_time_seconds": 9.67,
+  "mean_inference_latency_ms": 98.7,
+  "overall_test_accuracy": 0.5417,
+  "macro_precision": 0.4702,
+  "macro_recall": 0.5417,
+  "macro_f1": 0.487,
+  "weighted_f1": 0.487,
+  "per_class_metrics": {
+    "charminar": {
+      "precision": 0.75,
+      "recall": 0.75,
+      "f1-score": 0.75,
+      "support": 4
+    },
+    "hawa_mahal": {
+      "precision": 0.5714,
+      "recall": 1.0,
+      "f1-score": 0.7273,
+      "support": 4
+    },
+    "india_gate": {
+      "precision": 0.4,
+      "recall": 0.5,
+      "f1-score": 0.4444,
+      "support": 4
+    },
+    "qutub_minar": {
+      "precision": 0.5,
+      "recall": 0.25,
+      "f1-score": 0.3333,
+      "support": 4
+    },
+    "red_fort": {
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1-score": 0.0,
+      "support": 4
+    },
+    "taj_mahal": {
+      "precision": 0.6,
+      "recall": 0.75,
+      "f1-score": 0.6667,
+      "support": 4
+    }
+  },
+  "confusion_matrix": {
+    "classes": [
+      "charminar",
+      "hawa_mahal",
+      "india_gate",
+      "qutub_minar",
+      "red_fort",
+      "taj_mahal"
+    ],
+    "matrix": [
+      [
+        3,
+        1,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        4,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        2,
+        0,
+        0,
+        1
+      ],
+      [
+        1,
+        1,
+        0,
+        1,
+        0,
+        1
+      ],
+      [
+        0,
+        0,
+        3,
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        1,
+        3
+      ]
+    ]
+  },
+  "rejection_metrics": {
+    "test_samples_count": 24,
+    "correct_acceptance_rate": 0.6154,
+    "false_rejection_rate": 0.3846,
+    "negative_samples_count": 15,
+    "false_acceptance_rate": 0.6667,
+    "true_rejection_rate": 0.3333,
+    "negative_accepted_count": 10
+  },
+  "hyperparameters": {
+    "kernel": "linear",
+    "C": 0.5,
+    "gamma": "scale",
+    "use_feature_weights": false,
+    "val_accuracy": 0.8333333333333334
+  }
+}

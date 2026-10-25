@@ -1,13 +1,15 @@
 """
 MonuScript - Master Feature Extractor Pipeline
-Combines:
-1. Grayscale Histogram & Intensity Statistics (40 features)
-2. Sobel Edge Gradient Magnitude, Orientation & Density (36 features)
-3. Texture Coarseness Moments & 3x3 Spatial Grid Structure (31 features)
-4. HSV Color Space Normalized Histograms (32 features: H:16, S:8, V:8)
+Combines syllabus-aligned traditional digital image processing feature extractors:
+1. Grayscale Histogram & Intensity Statistics (40 features) - Unit I & II
+2. Sobel Edge Gradient Magnitude, Orientation & Density (36 features) - Unit IV
+3. Texture Coarseness Moments & 3x3 Spatial Grid Structure (31 features) - Unit IV
+4. HSV Color Space Normalized Histograms (32 features: H:16, S:8, V:8) - Unit I
+Optional syllabus enhancement groups:
+5. 2D Discrete Wavelet Transform (DWT) Multiresolution Statistics (16 features) - Unit III
+6. Morphological Shape Descriptors (9 features) - Unit I & IV
 
-Total Deterministic Feature Vector Dimension: 139 features.
-Strictly deterministic, identical feature order and sizing for training and inference.
+Strictly deterministic, identical feature ordering and sizing for training and inference.
 """
 
 import numpy as np
@@ -15,8 +17,10 @@ from .preprocessing import preprocess_image_for_features
 from .histogram_features import extract_histogram_features
 from .edge_features import extract_edge_features
 from .texture_features import extract_texture_features
+from .wavelet_features import extract_wavelet_features, WAVELET_FEATURE_DIM
+from .shape_features import extract_shape_features, SHAPE_FEATURE_DIM
 
-FEATURE_GROUPS = {
+BASE_FEATURE_GROUPS = {
     "histogram": {
         "start": 0,
         "end": 40,
@@ -47,7 +51,39 @@ FEATURE_GROUPS = {
     }
 }
 
+FEATURE_GROUPS = BASE_FEATURE_GROUPS
 TOTAL_FEATURE_DIM = 139
+
+
+def get_feature_groups_for_config(include_wavelet=False, include_shape=False):
+    """
+    Constructs the feature group boundary dictionary for a specified feature configuration.
+    """
+    groups = {k: dict(v) for k, v in BASE_FEATURE_GROUPS.items()}
+    current_idx = 139
+
+    if include_wavelet:
+        groups["wavelet"] = {
+            "start": current_idx,
+            "end": current_idx + WAVELET_FEATURE_DIM,
+            "length": WAVELET_FEATURE_DIM,
+            "description": "2D Haar Wavelet transform subband energy, mean magnitude, and variance statistics (16 values)",
+            "default_weight": 0.25
+        }
+        current_idx += WAVELET_FEATURE_DIM
+
+    if include_shape:
+        groups["shape"] = {
+            "start": current_idx,
+            "end": current_idx + SHAPE_FEATURE_DIM,
+            "length": SHAPE_FEATURE_DIM,
+            "description": "Morphological silhouette shape descriptors: aspect ratio, compactness, convexity, symmetry (9 values)",
+            "default_weight": 0.15
+        }
+        current_idx += SHAPE_FEATURE_DIM
+
+    return groups, current_idx
+
 
 def extract_hsv_color_features(hsv_image):
     """
@@ -78,9 +114,10 @@ def extract_hsv_color_features(hsv_image):
 
     return np.concatenate([h_norm, s_norm, v_norm]).astype(np.float32)
 
-def extract_features_from_preprocessed(preprocessed_dict):
+
+def extract_features_from_preprocessed(preprocessed_dict, include_wavelet=False, include_shape=False):
     """
-    Extracts the full 139-dimensional feature vector from preprocessed image dictionary.
+    Extracts the feature vector from preprocessed image dictionary according to configuration.
     """
     gray = preprocessed_dict["gray"]
     hsv = preprocessed_dict["hsv"]
@@ -90,18 +127,53 @@ def extract_features_from_preprocessed(preprocessed_dict):
     texture_feats = extract_texture_features(gray)
     color_feats = extract_hsv_color_features(hsv)
 
-    feature_vec = np.concatenate([hist_feats, edge_feats, texture_feats, color_feats]).astype(np.float32)
+    parts = [hist_feats, edge_feats, texture_feats, color_feats]
 
-    assert len(feature_vec) == TOTAL_FEATURE_DIM, f"Expected {TOTAL_FEATURE_DIM} features, got {len(feature_vec)}"
+    if include_wavelet:
+        wav_feats = extract_wavelet_features(gray)
+        parts.append(wav_feats)
+
+    if include_shape:
+        shape_feats = extract_shape_features(gray)
+        parts.append(shape_feats)
+
+    feature_vec = np.concatenate(parts).astype(np.float32)
+
+    expected_dim = 139 + (WAVELET_FEATURE_DIM if include_wavelet else 0) + (SHAPE_FEATURE_DIM if include_shape else 0)
+    assert len(feature_vec) == expected_dim, f"Expected {expected_dim} features, got {len(feature_vec)}"
     return feature_vec
 
-def extract_features(image_input):
+
+def extract_features(
+    image_input,
+    use_clahe=False,
+    clahe_clip_limit=2.0,
+    clahe_grid_size=(8, 8),
+    include_wavelet=False,
+    include_shape=False
+):
     """
     End-to-end feature extraction from raw image input.
+    Parameters:
+        image_input: file path, bytes, or PIL.Image.
+        use_clahe: bool, whether to apply LAB CLAHE preprocessing.
+        clahe_clip_limit: float, CLAHE clip limit.
+        clahe_grid_size: tuple, CLAHE grid size.
+        include_wavelet: bool, whether to append 16 DWT features.
+        include_shape: bool, whether to append 9 morphological shape features.
     Returns:
-        feature_vector: np.ndarray of shape (139,), dtype float32
-        preprocessed_dict: dictionary with intermediate representations (for previews/visualizations)
+        feature_vector: np.ndarray of shape (N,), dtype float32
+        preprocessed_dict: dictionary with intermediate representations
     """
-    prep = preprocess_image_for_features(image_input)
-    feats = extract_features_from_preprocessed(prep)
+    prep = preprocess_image_for_features(
+        image_input,
+        use_clahe=use_clahe,
+        clahe_clip_limit=clahe_clip_limit,
+        clahe_grid_size=clahe_grid_size
+    )
+    feats = extract_features_from_preprocessed(
+        prep,
+        include_wavelet=include_wavelet,
+        include_shape=include_shape
+    )
     return feats, prep

@@ -1,0 +1,665 @@
+{
+  "E0": {
+    "experiment_id": "E0",
+    "name": "Existing Baseline (139D DIP + SVM)",
+    "feature_dim": 139,
+    "retained_dimensions": 139,
+    "explained_variance_ratio": 1.0,
+    "training_time_seconds": 0.47,
+    "hyperparameters": {
+      "kernel": "linear",
+      "C": 0.1,
+      "gamma": "scale",
+      "val_acc": 0.8333333333333334
+    },
+    "config": {
+      "use_clahe": false,
+      "use_wavelet": false,
+      "use_shape": false,
+      "use_pca": false
+    },
+    "metrics": {
+      "val_accuracy": 0.8333,
+      "val_macro_f1": 0.8278,
+      "test_accuracy": 0.4583,
+      "test_macro_precision": 0.3675,
+      "test_macro_recall": 0.4583,
+      "test_macro_f1": 0.4003,
+      "per_class_f1": {
+        "charminar": 0.4444,
+        "hawa_mahal": 0.7273,
+        "india_gate": 0.4444,
+        "qutub_minar": 0.2857,
+        "red_fort": 0.0,
+        "taj_mahal": 0.5
+      },
+      "confusion_matrix": [
+        [
+          2,
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          4,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          3,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          0,
+          0,
+          2
+        ]
+      ],
+      "mean_latency_ms": 0.08,
+      "correct_acceptance_rate": 0.8182,
+      "false_rejection_rate": 0.1818,
+      "false_acceptance_rate": 0.7333,
+      "true_rejection_rate": 0.2667,
+      "negatives_accepted_count": 11,
+      "negatives_total_count": 15
+    }
+  },
+  "E1": {
+    "experiment_id": "E1",
+    "name": "Baseline + CLAHE in LAB Color Space",
+    "feature_dim": 139,
+    "retained_dimensions": 139,
+    "explained_variance_ratio": 1.0,
+    "training_time_seconds": 0.44,
+    "hyperparameters": {
+      "kernel": "linear",
+      "C": 0.1,
+      "gamma": "scale",
+      "val_acc": 0.9166666666666666
+    },
+    "config": {
+      "use_clahe": true,
+      "use_wavelet": false,
+      "use_shape": false,
+      "use_pca": false
+    },
+    "metrics": {
+      "val_accuracy": 0.9167,
+      "val_macro_f1": 0.9111,
+      "test_accuracy": 0.5417,
+      "test_macro_precision": 0.3944,
+      "test_macro_recall": 0.5417,
+      "test_macro_f1": 0.4556,
+      "per_class_f1": {
+        "charminar": 0.8,
+        "hawa_mahal": 0.8889,
+        "india_gate": 0.0,
+        "qutub_minar": 0.4444,
+        "red_fort": 0.0,
+        "taj_mahal": 0.6
+      },
+      "confusion_matrix": [
+        [
+          4,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          4,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          0,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          3
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          3
+        ]
+      ],
+      "mean_latency_ms": 0.08,
+      "correct_acceptance_rate": 0.6923,
+      "false_rejection_rate": 0.3077,
+      "false_acceptance_rate": 0.6667,
+      "true_rejection_rate": 0.3333,
+      "negatives_accepted_count": 10,
+      "negatives_total_count": 15
+    }
+  },
+  "E2": {
+    "experiment_id": "E2",
+    "name": "Baseline + 2D Haar Wavelet Features (155D)",
+    "feature_dim": 155,
+    "retained_dimensions": 155,
+    "explained_variance_ratio": 1.0,
+    "training_time_seconds": 0.36,
+    "hyperparameters": {
+      "kernel": "linear",
+      "C": 0.1,
+      "gamma": "scale",
+      "val_acc": 0.8333333333333334
+    },
+    "config": {
+      "use_clahe": false,
+      "use_wavelet": true,
+      "use_shape": false,
+      "use_pca": false
+    },
+    "metrics": {
+      "val_accuracy": 0.8333,
+      "val_macro_f1": 0.8278,
+      "test_accuracy": 0.4583,
+      "test_macro_precision": 0.3841,
+      "test_macro_recall": 0.4583,
+      "test_macro_f1": 0.4096,
+      "per_class_f1": {
+        "charminar": 0.5,
+        "hawa_mahal": 0.7273,
+        "india_gate": 0.4444,
+        "qutub_minar": 0.2857,
+        "red_fort": 0.0,
+        "taj_mahal": 0.5
+      },
+      "confusion_matrix": [
+        [
+          2,
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          4,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          3,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          1,
+          2
+        ]
+      ],
+      "mean_latency_ms": 0.08,
+      "correct_acceptance_rate": 0.8182,
+      "false_rejection_rate": 0.1818,
+      "false_acceptance_rate": 0.7333,
+      "true_rejection_rate": 0.2667,
+      "negatives_accepted_count": 11,
+      "negatives_total_count": 15
+    }
+  },
+  "E3": {
+    "experiment_id": "E3",
+    "name": "Baseline + Morphological Shape Descriptors (148D)",
+    "feature_dim": 148,
+    "retained_dimensions": 148,
+    "explained_variance_ratio": 1.0,
+    "training_time_seconds": 0.38,
+    "hyperparameters": {
+      "kernel": "linear",
+      "C": 0.1,
+      "gamma": "scale",
+      "val_acc": 0.8333333333333334
+    },
+    "config": {
+      "use_clahe": false,
+      "use_wavelet": false,
+      "use_shape": true,
+      "use_pca": false
+    },
+    "metrics": {
+      "val_accuracy": 0.8333,
+      "val_macro_f1": 0.8278,
+      "test_accuracy": 0.5,
+      "test_macro_precision": 0.4091,
+      "test_macro_recall": 0.5,
+      "test_macro_f1": 0.442,
+      "per_class_f1": {
+        "charminar": 0.4444,
+        "hawa_mahal": 0.7273,
+        "india_gate": 0.4444,
+        "qutub_minar": 0.2857,
+        "red_fort": 0.0,
+        "taj_mahal": 0.75
+      },
+      "confusion_matrix": [
+        [
+          2,
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          4,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          0,
+          0,
+          1
+        ],
+        [
+          2,
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          3,
+          1,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          3
+        ]
+      ],
+      "mean_latency_ms": 0.09,
+      "correct_acceptance_rate": 0.75,
+      "false_rejection_rate": 0.25,
+      "false_acceptance_rate": 0.6667,
+      "true_rejection_rate": 0.3333,
+      "negatives_accepted_count": 10,
+      "negatives_total_count": 15
+    }
+  },
+  "E4": {
+    "experiment_id": "E4",
+    "name": "Baseline + PCA Dimensionality Reduction (95% var)",
+    "feature_dim": 139,
+    "retained_dimensions": 35,
+    "explained_variance_ratio": 0.9542,
+    "training_time_seconds": 0.47,
+    "hyperparameters": {
+      "kernel": "linear",
+      "C": 0.1,
+      "gamma": "scale",
+      "val_acc": 0.8333333333333334
+    },
+    "config": {
+      "use_clahe": false,
+      "use_wavelet": false,
+      "use_shape": false,
+      "use_pca": true,
+      "pca_components": 0.95
+    },
+    "metrics": {
+      "val_accuracy": 0.8333,
+      "val_macro_f1": 0.8278,
+      "test_accuracy": 0.5,
+      "test_macro_precision": 0.4306,
+      "test_macro_recall": 0.5,
+      "test_macro_f1": 0.4578,
+      "per_class_f1": {
+        "charminar": 0.6667,
+        "hawa_mahal": 0.6,
+        "india_gate": 0.4444,
+        "qutub_minar": 0.2857,
+        "red_fort": 0.0,
+        "taj_mahal": 0.75
+      },
+      "confusion_matrix": [
+        [
+          3,
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          3,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          0,
+          0,
+          1
+        ],
+        [
+          2,
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          3,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          1,
+          3
+        ]
+      ],
+      "mean_latency_ms": 0.07,
+      "correct_acceptance_rate": 0.6667,
+      "false_rejection_rate": 0.3333,
+      "false_acceptance_rate": 0.6667,
+      "true_rejection_rate": 0.3333,
+      "negatives_accepted_count": 10,
+      "negatives_total_count": 15
+    }
+  },
+  "E5": {
+    "experiment_id": "E5",
+    "name": "Baseline + Calibrated Multi-Evidence Rejection",
+    "feature_dim": 139,
+    "retained_dimensions": 139,
+    "explained_variance_ratio": 1.0,
+    "training_time_seconds": 0.36,
+    "hyperparameters": {
+      "kernel": "linear",
+      "C": 0.1,
+      "gamma": "scale",
+      "val_acc": 0.8333333333333334
+    },
+    "config": {
+      "use_clahe": false,
+      "use_wavelet": false,
+      "use_shape": false,
+      "use_pca": false,
+      "rejection_config": {
+        "accept_threshold": 0.48,
+        "margin_threshold": 0.18,
+        "uncertain_threshold": 0.32
+      }
+    },
+    "metrics": {
+      "val_accuracy": 0.8333,
+      "val_macro_f1": 0.8278,
+      "test_accuracy": 0.4583,
+      "test_macro_precision": 0.3675,
+      "test_macro_recall": 0.4583,
+      "test_macro_f1": 0.4003,
+      "per_class_f1": {
+        "charminar": 0.4444,
+        "hawa_mahal": 0.7273,
+        "india_gate": 0.4444,
+        "qutub_minar": 0.2857,
+        "red_fort": 0.0,
+        "taj_mahal": 0.5
+      },
+      "confusion_matrix": [
+        [
+          2,
+          1,
+          0,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          4,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          2,
+          0,
+          0,
+          1
+        ],
+        [
+          1,
+          1,
+          0,
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          3,
+          1,
+          0,
+          0
+        ],
+        [
+          2,
+          0,
+          0,
+          0,
+          0,
+          2
+        ]
+      ],
+      "mean_latency_ms": 0.08,
+      "correct_acceptance_rate": 0.6364,
+      "false_rejection_rate": 0.3636,
+      "false_acceptance_rate": 0.3333,
+      "true_rejection_rate": 0.6667,
+      "negatives_accepted_count": 5,
+      "negatives_total_count": 15
+    }
+  },
+  "E6": {
+    "experiment_id": "E6",
+    "name": "Best Individually Validated Combination (E6_clahe_rejection)",
+    "selected_candidate": "E6_clahe_rejection",
+    "feature_dim": 139,
+    "retained_dimensions": 139,
+    "explained_variance_ratio": 1.0,
+    "training_time_seconds": 0.37,
+    "hyperparameters": {
+      "kernel": "linear",
+      "C": 0.1,
+      "gamma": "scale",
+      "val_acc": 0.9166666666666666
+    },
+    "config": {
+      "use_clahe": true,
+      "use_wavelet": false,
+      "use_shape": false,
+      "use_pca": false,
+      "rejection_config": {
+        "accept_threshold": 0.48,
+        "margin_threshold": 0.18,
+        "uncertain_threshold": 0.32
+      }
+    },
+    "metrics": {
+      "val_accuracy": 0.9167,
+      "val_macro_f1": 0.9111,
+      "test_accuracy": 0.5417,
+      "test_macro_precision": 0.3944,
+      "test_macro_recall": 0.5417,
+      "test_macro_f1": 0.4556,
+      "per_class_f1": {
+        "charminar": 0.8,
+        "hawa_mahal": 0.8889,
+        "india_gate": 0.0,
+        "qutub_minar": 0.4444,
+        "red_fort": 0.0,
+        "taj_mahal": 0.6
+      },
+      "confusion_matrix": [
+        [
+          4,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          4,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          0,
+          2,
+          1,
+          0
+        ],
+        [
+          1,
+          0,
+          1,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          3
+        ],
+        [
+          1,
+          0,
+          0,
+          0,
+          0,
+          3
+        ]
+      ],
+      "mean_latency_ms": 0.08,
+      "correct_acceptance_rate": 0.6923,
+      "false_rejection_rate": 0.3077,
+      "false_acceptance_rate": 0.6,
+      "true_rejection_rate": 0.4,
+      "negatives_accepted_count": 9,
+      "negatives_total_count": 15
+    }
+  }
+}

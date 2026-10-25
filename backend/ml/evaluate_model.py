@@ -58,8 +58,19 @@ def evaluate_test_set():
     classes = pipeline["classes"]
     use_weights = pipeline.get("use_feature_weights", True)
     class_centroids = pipeline.get("class_centroids")
+    use_clahe = pipeline.get("use_clahe", False)
+    clahe_clip_limit = pipeline.get("clahe_clip_limit", 2.0)
+    clahe_grid_size = tuple(pipeline.get("clahe_grid_size", (8, 8)))
+    include_wavelet = pipeline.get("include_wavelet", False)
+    include_shape = pipeline.get("include_shape", False)
+    rejection_cfg = pipeline.get("rejection_config", {})
 
-    judge = RejectionJudge(class_centroids=class_centroids)
+    judge = RejectionJudge(
+        accept_threshold=rejection_cfg.get("accept_threshold", 0.40),
+        margin_threshold=rejection_cfg.get("margin_threshold", 0.12),
+        uncertain_threshold=rejection_cfg.get("uncertain_threshold", 0.28),
+        class_centroids=class_centroids
+    )
 
     test_dir = DATASET_ROOT / "test"
     if not test_dir.exists():
@@ -79,7 +90,14 @@ def evaluate_test_set():
         test_images = sorted([f for f in cls_dir.iterdir() if f.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]])
         for img_path in test_images:
             t0 = time.time()
-            feats, prep = extract_features(str(img_path))
+            feats, prep = extract_features(
+                str(img_path),
+                use_clahe=use_clahe,
+                clahe_clip_limit=clahe_clip_limit,
+                clahe_grid_size=clahe_grid_size,
+                include_wavelet=include_wavelet,
+                include_shape=include_shape
+            )
             scaled_feats = scaler.transform(feats.reshape(1, -1))
             proc_feats = apply_feature_group_weights(scaled_feats, use_weights=use_weights)
 
@@ -127,7 +145,14 @@ def evaluate_test_set():
         neg_total = len(neg_images)
         for img_path in neg_images:
             try:
-                feats, _ = extract_features(str(img_path))
+                feats, _ = extract_features(
+                    str(img_path),
+                    use_clahe=use_clahe,
+                    clahe_clip_limit=clahe_clip_limit,
+                    clahe_grid_size=clahe_grid_size,
+                    include_wavelet=include_wavelet,
+                    include_shape=include_shape
+                )
                 scaled_feats = scaler.transform(feats.reshape(1, -1))
                 proc_feats = apply_feature_group_weights(scaled_feats, use_weights=use_weights)
                 probs = clf.predict_proba(proc_feats)[0]

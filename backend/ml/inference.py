@@ -39,7 +39,19 @@ class MonumentPredictor:
         self.class_centroids = self.pipeline.get("class_centroids")
         self.feature_groups = self.pipeline.get("feature_groups", FEATURE_GROUPS)
 
-        self.judge = RejectionJudge(class_centroids=self.class_centroids)
+        self.use_clahe = self.pipeline.get("use_clahe", False)
+        self.clahe_clip_limit = self.pipeline.get("clahe_clip_limit", 2.0)
+        self.clahe_grid_size = tuple(self.pipeline.get("clahe_grid_size", (8, 8)))
+        self.include_wavelet = self.pipeline.get("include_wavelet", False)
+        self.include_shape = self.pipeline.get("include_shape", False)
+
+        rejection_cfg = self.pipeline.get("rejection_config", {})
+        self.judge = RejectionJudge(
+            accept_threshold=rejection_cfg.get("accept_threshold", 0.40),
+            margin_threshold=rejection_cfg.get("margin_threshold", 0.12),
+            uncertain_threshold=rejection_cfg.get("uncertain_threshold", 0.28),
+            class_centroids=self.class_centroids
+        )
 
     @classmethod
     def get_instance(cls):
@@ -78,7 +90,14 @@ class MonumentPredictor:
         t0 = time.time()
 
         # 1. Feature extraction & Preprocessing
-        feats, prep = extract_features(image_input)
+        feats, prep = extract_features(
+            image_input,
+            use_clahe=self.use_clahe,
+            clahe_clip_limit=self.clahe_clip_limit,
+            clahe_grid_size=self.clahe_grid_size,
+            include_wavelet=self.include_wavelet,
+            include_shape=self.include_shape
+        )
         orig_w, orig_h = prep["original_size"]
 
         # 2. Scaling & Weighting
@@ -171,7 +190,14 @@ class MonumentPredictor:
             if crop_w < 80 or crop_h < 80:
                 continue
 
-            feats, _ = extract_features(crop_img)
+            feats, _ = extract_features(
+                crop_img,
+                use_clahe=self.use_clahe,
+                clahe_clip_limit=self.clahe_clip_limit,
+                clahe_grid_size=self.clahe_grid_size,
+                include_wavelet=self.include_wavelet,
+                include_shape=self.include_shape
+            )
             scaled_feats = self.scaler.transform(feats.reshape(1, -1))
             proc_feats = self._apply_weights(scaled_feats)
             probs = self.classifier.predict_proba(proc_feats)[0]

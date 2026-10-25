@@ -1,8 +1,8 @@
 {
   "model_type": "SupportVectorMachine",
   "library": "scikit-learn",
-  "created_at": "2026-10-24 17:02:15",
-  "training_duration_seconds": 9.67,
+  "created_at": "2026-10-25 11:10:30",
+  "training_duration_seconds": 11.09,
   "supported_classes": [
     "charminar",
     "hawa_mahal",
@@ -15,10 +15,25 @@
   "feature_dimension": 139,
   "hyperparameters": {
     "kernel": "linear",
-    "C": 0.5,
+    "C": 0.1,
     "gamma": "scale",
     "use_feature_weights": false,
-    "val_accuracy": 0.8333333333333334
+    "val_accuracy": 0.9166666666666666
+  },
+  "enhancements": {
+    "use_clahe": true,
+    "clahe_clip_limit": 2.0,
+    "clahe_grid_size": [
+      8,
+      8
+    ],
+    "include_wavelet": false,
+    "include_shape": false,
+    "rejection_config": {
+      "accept_threshold": 0.48,
+      "margin_threshold": 0.18,
+      "uncertain_threshold": 0.32
+    }
   },
   "samples_per_split": {
     "train": 72,
