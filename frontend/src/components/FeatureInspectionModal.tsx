@@ -26,7 +26,7 @@ export const FeatureInspectionModal: React.FC<FeatureInspectionModalProps> = ({
             </div>
             <div>
               <h3 className="font-serif font-bold text-base text-[#1F2923]">
-                DIP Syllabus Feature Pipeline Inspector
+                DIP Feature Pipeline Inspector
               </h3>
               <p className="text-xs text-stone-500">
                 139-Dimensional Deterministic Mathematical Representation
@@ -46,7 +46,7 @@ export const FeatureInspectionModal: React.FC<FeatureInspectionModalProps> = ({
           <div className="p-3.5 rounded-xl bg-amber-50/60 border border-amber-200 space-y-1">
             <h4 className="font-semibold text-amber-950 flex items-center space-x-1.5">
               <ShieldCheck className="w-4 h-4 text-[#C85A32]" />
-              <span>Strict Syllabus Constraint Compliance</span>
+              <span>Strict Constraint Compliance</span>
             </h4>
             <p className="text-stone-600 leading-relaxed text-[11px]">
               No deep learning architectures, CNNs, Transformers, or external vision APIs are used. 
