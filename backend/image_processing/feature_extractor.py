@@ -58,7 +58,9 @@ BASE_FEATURE_GROUPS = {
 }
 
 FEATURE_GROUPS = BASE_FEATURE_GROUPS
-TOTAL_FEATURE_DIM = 139
+BASE_FEATURE_DIM = 139
+TOTAL_FEATURE_DIM = 139  # Baseline feature dimension without enhancements (40 + 36 + 31 + 32)
+PRODUCTION_FEATURE_DIM = 155  # Production model feature dimension (139 + 16 architectural descriptors)
 
 
 def get_feature_groups_for_config(include_wavelet=False, include_shape=False, include_architectural=False):

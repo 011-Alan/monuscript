@@ -151,7 +151,7 @@ class MonumentPredictor:
         # Developer / debug diagnostic inspection metadata (Requirement 8)
         diagnostics = {
             "model_version": "2.0-dip-svm-architectural",
-            "model_type": "Support Vector Machine (RBF kernel, C=2.0)",
+            "model_type": f"Support Vector Machine ({getattr(self.classifier, 'kernel', 'rbf').upper()} kernel, C={getattr(self.classifier, 'C', 0.2)})",
             "probability_calibration_method": "Platt Scaling (logistic sigmoid on SVM decision margins)",
             "predicted_class": decision["top_class"],
             "top_score": round(float(decision["top_score"]), 3),

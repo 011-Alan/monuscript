@@ -183,7 +183,7 @@ Domain-specific descriptors that resolve ambiguities between visually similar mo
 * **Algorithm:** Support Vector Machine (SVM) using `scikit-learn`'s `SVC`.
 * **Kernel:** Radial Basis Function (RBF Kernel):  
   $$K(\mathbf{x}_i, \mathbf{x}_j) = \exp\left(-\gamma \|\mathbf{x}_i - \mathbf{x}_j\|^2\right)$$
-* **Hyperparameters:** Penalty parameter $C = 2.0$, kernel coefficient $\gamma = \text{'scale'} = \frac{1}{d \cdot \text{Var}(X)}$, with $d = 155$.
+* **Hyperparameters:** Penalty parameter $C = 0.2$, kernel coefficient $\gamma = 0.01$, with syllabus feature group weighting enabled over $d = 155$.
 * **Feature Scaling:** `StandardScaler` applies zero-mean, unit-variance standardization:  
   $$z = \frac{x - \mu}{\sigma}$$
   Scaler parameters ($\mu, \sigma$) are fitted strictly on the training set and serialized with the model artifact.

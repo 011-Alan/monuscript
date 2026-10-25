@@ -29,7 +29,7 @@ export const FeatureInspectionModal: React.FC<FeatureInspectionModalProps> = ({
                 DIP Feature Pipeline Inspector
               </h3>
               <p className="text-xs text-stone-500">
-                139-Dimensional Deterministic Mathematical Representation
+                {summary?.total_features || 155}-Dimensional Deterministic Mathematical Representation
               </p>
             </div>
           </div>
@@ -67,7 +67,7 @@ export const FeatureInspectionModal: React.FC<FeatureInspectionModalProps> = ({
                   1. Grayscale Histogram & Statistical Moments
                 </span>
                 <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-stone-100 text-stone-700">
-                  40 Dimensions
+                  {summary?.groups?.histogram?.count || 40} Dimensions
                 </span>
               </div>
               <p className="text-[11px] text-stone-500 leading-relaxed">
@@ -83,7 +83,7 @@ export const FeatureInspectionModal: React.FC<FeatureInspectionModalProps> = ({
                   2. Sobel Spatial Gradient Derivatives
                 </span>
                 <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-stone-100 text-stone-700">
-                  36 Dimensions
+                  {summary?.groups?.edge?.count || 36} Dimensions
                 </span>
               </div>
               <p className="text-[11px] text-stone-500 leading-relaxed">
@@ -100,7 +100,7 @@ export const FeatureInspectionModal: React.FC<FeatureInspectionModalProps> = ({
                   3. Texture Variance & 3x3 Spatial Grid Layout
                 </span>
                 <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-stone-100 text-stone-700">
-                  31 Dimensions
+                  {summary?.groups?.texture?.count || 31} Dimensions
                 </span>
               </div>
               <p className="text-[11px] text-stone-500 leading-relaxed">
@@ -116,12 +116,27 @@ export const FeatureInspectionModal: React.FC<FeatureInspectionModalProps> = ({
                   4. HSV Color Space Distributions
                 </span>
                 <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-stone-100 text-stone-700">
-                  32 Dimensions
+                  {summary?.groups?.color?.count || 32} Dimensions
                 </span>
               </div>
               <p className="text-[11px] text-stone-500 leading-relaxed">
                 Normalized histograms of Hue (16 bins), Saturation (8 bins), and Value (8 bins).
                 Distinguishes materials like white Makrana marble (Taj Mahal), red/buff sandstone (Red Fort, Qutub Minar), and pink sandstone (Hawa Mahal).
+              </p>
+            </div>
+
+            {/* Group 5: Architectural Descriptors */}
+            <div className="p-3.5 rounded-xl border border-stone-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-stone-800 text-xs">
+                  5. Monument-Specific Architectural Descriptors
+                </span>
+                <span className="px-2 py-0.5 rounded text-[11px] font-mono bg-stone-100 text-stone-700">
+                  {summary?.groups?.architectural?.count || 16} Dimensions
+                </span>
+              </div>
+              <p className="text-[11px] text-stone-500 leading-relaxed">
+                Domain-specific structural descriptors: Central arch void luminance contrast & upper cornice dominance (India Gate), conical tapering & vertical shaft concentration (Qutub Minar), jharokha window opening density & facade lattice heterogeneity (Hawa Mahal), central dome circularity & structural marble whiteness (Taj Mahal), bilateral reflection symmetry & corner minaret balance (Charminar), and horizontal rampart continuity & red sandstone warmth (Red Fort).
               </p>
             </div>
           </div>
