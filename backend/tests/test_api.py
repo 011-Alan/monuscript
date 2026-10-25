@@ -150,3 +150,19 @@ def test_sync_conversations_batch_endpoint(client):
     assert len(conv_data["messages"]) == 2
     assert conv_data["messages"][0]["content"] == "Analysis of India Gate"
     assert conv_data["messages"][1]["results"][0]["monument_id"] == "india_gate"
+
+
+def test_serve_upload_unauthenticated(client):
+    """GET /uploads/<filename> does not require Authorization header to allow <img> rendering."""
+    # Ensure test file exists in UPLOAD_FOLDER
+    from config import Config
+    test_user_dir = Config.UPLOAD_FOLDER / "test_user"
+    test_user_dir.mkdir(parents=True, exist_ok=True)
+    test_file = test_user_dir / "sample_test.png"
+    test_file.write_bytes(b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15c4\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82")
+
+    # Access without any Authorization header
+    resp = client.get("/uploads/test_user/sample_test.png")
+    assert resp.status_code == 200
+    assert resp.headers.get("Cache-Control") == "public, max-age=86400"
+    assert len(resp.data) > 0

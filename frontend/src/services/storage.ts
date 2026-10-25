@@ -156,8 +156,17 @@ export function appendLocalMessage(convId: string, message: Message): void {
   try {
     if (!convId) return;
     const existing = getLocalMessages(convId);
-    // Avoid exact duplicate message IDs
-    if (!existing.some(m => m.id === message.id)) {
+    // Avoid exact duplicate message IDs or redundant identical messages sent in immediate succession
+    const isDuplicate = existing.some(m => {
+      if (m.id === message.id) return true;
+      if (m.role === message.role && m.content === message.content) {
+        const diff = Math.abs(new Date(m.created_at).getTime() - new Date(message.created_at).getTime());
+        if (diff < 3000) return true;
+      }
+      return false;
+    });
+
+    if (!isDuplicate) {
       const updated = [...existing, message];
       saveLocalMessages(convId, updated);
     }
@@ -175,6 +184,20 @@ export function appendLocalMessage(convId: string, message: Message): void {
     }
   } catch (err) {
     console.warn(`[MonuScript Storage] Error appending message for ${convId}:`, err);
+  }
+}
+
+/**
+ * Replaces an existing message in browser shared memory (e.g. replacing a temp ID with server ID).
+ */
+export function replaceLocalMessage(convId: string, oldMsgId: string, newMsg: Message): void {
+  try {
+    if (!convId) return;
+    const current = getLocalMessages(convId);
+    const updated = current.map(m => (m.id === oldMsgId ? newMsg : m));
+    saveLocalMessages(convId, updated);
+  } catch (err) {
+    console.warn(`[MonuScript Storage] Error replacing message in ${convId}:`, err);
   }
 }
 
@@ -241,33 +264,83 @@ export function mergeConversations(local: Conversation[], remote: Conversation[]
 
 /**
  * Merges local messages with remote backend messages:
- * Combines distinct messages by id, preserving results and image attachments.
+ * 1. Matches exact IDs.
+ * 2. Matches temporary client IDs (user_* or asst_*) with corresponding remote messages
+ *    by role, image presence, and close timestamp.
+ * 3. Preserves persistent image URLs and rich recognition results.
+ * 4. Deduplicates any redundant adjacent messages with identical roles and timestamps.
  */
 export function mergeMessages(local: Message[], remote: Message[]): Message[] {
-  const map = new Map<string, Message>();
-
-  for (const m of local) {
-    map.set(m.id, m);
-  }
+  const mergedList: Message[] = [];
+  const localCopy = [...local];
 
   for (const r of remote) {
-    if (!map.has(r.id)) {
-      map.set(r.id, r);
-    } else {
-      const loc = map.get(r.id)!;
-      // Merge results if remote has them and local didn't, or vice-versa
-      const mergedResults = (r.results && r.results.length > 0)
-        ? r.results
-        : (loc.results || []);
-      map.set(r.id, {
+    // 1. Check for exact ID match in local
+    const exactLocalIdx = localCopy.findIndex(l => l.id === r.id);
+    if (exactLocalIdx >= 0) {
+      const loc = localCopy[exactLocalIdx];
+      localCopy.splice(exactLocalIdx, 1);
+      mergedList.push({
         ...loc,
         ...r,
-        results: mergedResults
+        image_url: r.image_url || loc.image_url,
+        results: (r.results && r.results.length > 0) ? r.results : (loc.results || [])
       });
+      continue;
+    }
+
+    // 2. Check for temp client message in local corresponding to this remote message
+    // (e.g. temp ID starting with "user_" or "asst_", same role, and timestamp within 45 seconds)
+    const tempLocalIdx = localCopy.findIndex(l => {
+      if (l.role !== r.role) return false;
+      const isClientTemp = l.id.startsWith('user_') || l.id.startsWith('asst_') || l.id.startsWith('error_');
+      if (!isClientTemp) return false;
+      const lTime = new Date(l.created_at).getTime();
+      const rTime = new Date(r.created_at).getTime();
+      const timeDiff = Math.abs(lTime - rTime);
+      return timeDiff < 45000;
+    });
+
+    if (tempLocalIdx >= 0) {
+      const loc = localCopy[tempLocalIdx];
+      localCopy.splice(tempLocalIdx, 1);
+      mergedList.push({
+        ...loc,
+        ...r,
+        id: r.id, // adopt the authoritative server ID
+        image_url: r.image_url || loc.image_url,
+        results: (r.results && r.results.length > 0) ? r.results : (loc.results || [])
+      });
+      continue;
+    }
+
+    // Otherwise, it's a new remote message
+    mergedList.push(r);
+  }
+
+  // 3. Any remaining local messages that were not matched (e.g. offline messages waiting to sync)
+  for (const remaining of localCopy) {
+    mergedList.push(remaining);
+  }
+
+  // Sort chronologically
+  mergedList.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+  // 4. Final deduplication pass: filter out duplicates with identical role and content created within 5s
+  const deduplicated: Message[] = [];
+  for (const msg of mergedList) {
+    const isDup = deduplicated.some(existing => {
+      if (existing.id === msg.id) return true;
+      if (existing.role === msg.role && existing.content === msg.content) {
+        const diff = Math.abs(new Date(existing.created_at).getTime() - new Date(msg.created_at).getTime());
+        if (diff < 5000) return true;
+      }
+      return false;
+    });
+    if (!isDup) {
+      deduplicated.push(msg);
     }
   }
 
-  return Array.from(map.values()).sort(
-    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-  );
+  return deduplicated;
 }

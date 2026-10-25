@@ -12,10 +12,50 @@ import {
   Message, 
   MonumentMetadata, 
   SystemHealth, 
-  FeatureSummary 
+  FeatureSummary,
+  StoredResult 
 } from './types';
 import * as api from './services/api';
 import * as storage from './services/storage';
+
+// Helper to generate a lightweight persistent JPEG thumbnail data URL (< 40KB)
+// so that uploaded monument photos render instantly and survive browser refreshes even offline.
+async function createThumbnailDataUrl(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 640;
+        let w = img.width;
+        let h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) {
+            h = Math.round((h * maxDim) / w);
+            w = maxDim;
+          } else {
+            w = Math.round((w * maxDim) / h);
+            h = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        } else {
+          resolve(e.target?.result as string);
+        }
+      };
+      img.onerror = () => resolve(e.target?.result as string);
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => resolve(URL.createObjectURL(file));
+    reader.readAsDataURL(file);
+  });
+}
 
 export const App: React.FC = () => {
   // 1. Instant Synchronous Initialization from Browser Shared Memory (zero flicker on refresh)
@@ -257,21 +297,27 @@ export const App: React.FC = () => {
       targetConvId = fallbackId;
     }
 
-    // 1. Create immediate local user message with object URL preview
-    const previewUrl = URL.createObjectURL(file);
-    const userMsgId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const userMsg: Message = {
-      id: userMsgId,
+    // 1. Create immediate lightweight thumbnail data URL so photo persists across page refreshes
+    let initialImageUrl: string;
+    try {
+      initialImageUrl = await createThumbnailDataUrl(file);
+    } catch {
+      initialImageUrl = URL.createObjectURL(file);
+    }
+
+    const tempUserMsgId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const tempUserMsg: Message = {
+      id: tempUserMsgId,
       conversation_id: targetConvId,
       role: 'user',
       content: 'Uploaded monument photograph for architectural analysis.',
-      image_url: previewUrl,
+      image_url: initialImageUrl,
       created_at: new Date().toISOString()
     };
 
     // Immediately save and display user message
-    storage.appendLocalMessage(targetConvId, userMsg);
-    setMessages(prev => [...prev, userMsg]);
+    storage.appendLocalMessage(targetConvId, tempUserMsg);
+    setMessages(prev => [...prev, tempUserMsg]);
 
     try {
       const response = await api.recognizeImage(
@@ -284,30 +330,68 @@ export const App: React.FC = () => {
         setActiveFeatureSummary(response.feature_summary);
       }
 
-      // 2. Create assistant response message
-      const asstMsgId = `asst_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      // 2. Identify authoritative server IDs and persistent upload URL
+      const serverUserMsgId = response.message_ids?.user_message_id || tempUserMsgId;
+      const serverAsstMsgId = response.message_ids?.assistant_message_id || `asst_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const persistentImageUrl = response.image?.url ? api.formatImageUrl(response.image.url) : initialImageUrl;
+
+      // 3. Update the temporary user message with the server message ID and persistent image URL
+      const finalUserMsg: Message = {
+        ...tempUserMsg,
+        id: serverUserMsgId,
+        image_url: persistentImageUrl || initialImageUrl
+      };
+
+      // 4. Construct candidate results or rejection results
+      const resultsList: StoredResult[] = (response.results && response.results.length > 0)
+        ? response.results.map((r: any) => ({
+            id: `res_${Math.random().toString(36).slice(2, 9)}`,
+            monument_id: r.monument_id,
+            score: r.score,
+            score_type: r.score_type || 'recognition_score',
+            accepted: response.accepted,
+            metadata: r
+          }))
+        : [
+            {
+              id: `res_rej_${Date.now()}`,
+              monument_id: response.top_class || 'unknown',
+              score: response.top_score || 0,
+              score_type: 'rejected_candidate',
+              accepted: false,
+              metadata: {
+                reason: response.message,
+                runner_up_class: response.runner_up_class,
+                runner_up_score: response.runner_up_score,
+                margin: response.margin,
+                top_class: response.top_class,
+                top_score: response.top_score,
+                processing_time_ms: response.processing_time_ms
+              }
+            }
+          ];
+
       const asstMsg: Message = {
-        id: asstMsgId,
+        id: serverAsstMsgId,
         conversation_id: targetConvId,
         role: 'assistant',
         content: response.message,
         image_url: null,
         created_at: new Date().toISOString(),
-        results: (response.results || []).map((r: any) => ({
-          id: `res_${Math.random().toString(36).slice(2, 9)}`,
-          monument_id: r.monument_id,
-          score: r.score,
-          score_type: r.score_type || 'recognition_score',
-          accepted: response.accepted,
-          metadata: r
-        }))
+        results: resultsList
       };
 
-      // Persist assistant message in browser shared memory and UI
+      // Replace tempUserMsg with finalUserMsg, and append asstMsg in local storage
+      storage.replaceLocalMessage(targetConvId, tempUserMsgId, finalUserMsg);
       storage.appendLocalMessage(targetConvId, asstMsg);
-      setMessages(prev => [...prev, asstMsg]);
 
-      // 3. Update conversation title if default
+      // Update state without duplicate keys
+      setMessages(prev => {
+        const withoutTemp = prev.filter(m => m.id !== tempUserMsgId && m.id !== serverUserMsgId && m.id !== serverAsstMsgId);
+        return [...withoutTemp, finalUserMsg, asstMsg];
+      });
+
+      // 5. Update conversation title if default
       const currentConv = conversations.find(c => c.id === targetConvId);
       if (currentConv && currentConv.title === 'New Monument Exploration' && response.top_class) {
         const readableTitle = response.top_class.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -315,7 +399,7 @@ export const App: React.FC = () => {
         handleRename(targetConvId, newTitle);
       }
 
-      // 4. Background synchronization with backend details if available
+      // 6. Background synchronization with backend details (cleanly deduplicated because IDs now match)
       try {
         const details = await api.fetchConversationDetails(targetConvId);
         const localCurrent = storage.getLocalMessages(targetConvId);

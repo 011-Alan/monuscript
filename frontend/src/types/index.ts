@@ -50,7 +50,12 @@ export interface RecognitionResponse {
   top_score?: number;
   runner_up_class?: string | null;
   runner_up_score?: number | null;
+  margin?: number;
   processing_time_ms: number;
+  message_ids?: {
+    user_message_id?: string;
+    assistant_message_id?: string;
+  };
   image: {
     filename?: string;
     url?: string;
@@ -66,7 +71,7 @@ export interface StoredResult {
   score: number;
   score_type: string;
   accepted: boolean;
-  metadata?: Partial<RecognitionCandidate>;
+  metadata?: (Partial<RecognitionCandidate> & Record<string, any>);
 }
 
 export interface Message {

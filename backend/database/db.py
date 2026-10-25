@@ -241,6 +241,7 @@ def sync_conversations_batch(user_id: str, conversations_list: list, messages_di
                     "UPDATE conversations SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?",
                     (title, updated_at or row["updated_at"], c_id, user_id)
                 )
+                synced_convs += 1
 
         if messages_dict:
             for c_id, msgs in messages_dict.items():

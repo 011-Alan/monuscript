@@ -7,7 +7,7 @@ import os
 import sys
 import json
 from pathlib import Path
-from flask import Flask, request, jsonify, send_from_directory, g
+from flask import Flask, request, jsonify, send_from_directory, send_file, g
 from flask_cors import CORS
 
 BACKEND_DIR = Path(__file__).resolve().parent
@@ -303,32 +303,41 @@ def create_app():
 
     @app.route("/uploads/<path:filename>", methods=["GET", "OPTIONS"])
     @app.route("/api/v1/uploads/<path:filename>", methods=["GET", "OPTIONS"])
-    @require_auth
     def serve_upload(filename):
         """
-        Serve uploaded files.
-        Only the owning user may access their files (under UPLOAD_FOLDER/<user_id>/<filename>).
+        Serve uploaded files without requiring an Authorization Bearer header,
+        allowing standard browser <img> tags to render thumbnails persistently across refreshes.
+        Confined strictly within Config.UPLOAD_FOLDER to prevent directory traversal.
         """
         if request.method == "OPTIONS":
             return "", 200
 
-        user_id = g.user_id
+        upload_root = Config.UPLOAD_FOLDER.resolve()
+        requested_path = (upload_root / filename).resolve()
+
+        # Prevent directory traversal attacks
+        if upload_root not in requested_path.parents and requested_path != upload_root:
+            return jsonify({
+                "success": False,
+                "error": {"code": "FORBIDDEN", "message": "Invalid file path."}
+            }), 403
+
+        if requested_path.is_file():
+            resp = send_file(requested_path)
+            resp.headers["Cache-Control"] = "public, max-age=86400"
+            return resp
+
+        # Fallback: search for safe_name directly under UPLOAD_FOLDER or sub-folders
         safe_name = Path(filename).name
-
-        # Check inside user-specific directory
-        user_dir = Config.UPLOAD_FOLDER / user_id
-        requested_path = user_dir / safe_name
-        if requested_path.exists():
-            return send_from_directory(str(user_dir), safe_name)
-
-        # Legacy fallback if saved in root UPLOAD_FOLDER
-        root_path = Config.UPLOAD_FOLDER / safe_name
-        if root_path.exists():
-            return send_from_directory(str(Config.UPLOAD_FOLDER), safe_name)
+        for candidate in upload_root.rglob(safe_name):
+            if candidate.is_file():
+                resp = send_file(candidate)
+                resp.headers["Cache-Control"] = "public, max-age=86400"
+                return resp
 
         return jsonify({
             "success": False,
-            "error": {"code": "NOT_FOUND", "message": "File not found or access denied."}
+            "error": {"code": "NOT_FOUND", "message": "Uploaded file not found."}
         }), 404
 
     # ==================== Error Handlers ====================
