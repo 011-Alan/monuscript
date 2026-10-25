@@ -5,10 +5,10 @@
  *
  * Priorities:
  * 1. If Supabase is configured and reachable: uses Supabase Anonymous Authentication (JWT).
- * 2. If Supabase is unconfigured or unreachable: seamlessly falls back to a persistent
- *    cryptographic anonymous visitor ID stored in localStorage.
+ * 2. If Supabase is unconfigured, unreachable, or anonymous sign-in is disabled in project settings:
+ *    seamlessly falls back to a persistent cryptographic anonymous visitor ID stored in localStorage.
  *
- * This ensures strict per-visitor data isolation at all times without crashing or blocking.
+ * This ensures strict per-visitor data isolation at all times without crashing, blocking, or losing state.
  */
 
 import { createClient, SupabaseClient, Session } from '@supabase/supabase-js';
@@ -34,10 +34,13 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
   : null;
 
 let _session: Session | null = null;
+let _anonymousProviderDisabled = false;
 const VISITOR_STORAGE_KEY = 'monuscript_visitor_id';
 
 /**
  * Returns or generates a unique, persistent anonymous visitor token for this browser.
+ * Guaranteed to be persistent across refreshes in the same browser, while isolating
+ * completely between different browsers (Chrome vs Firefox vs Edge).
  */
 export function getOrCreateLocalVisitorId(): string {
   try {
@@ -60,8 +63,8 @@ export function getOrCreateLocalVisitorId(): string {
  * Call this before rendering or on first API call.
  */
 export async function initAnonymousSession(): Promise<string> {
-  // 1. Try Supabase if configured
-  if (supabase) {
+  // 1. Try Supabase if configured and not previously identified as disabled
+  if (supabase && !_anonymousProviderDisabled) {
     try {
       const { data: existingData } = await supabase.auth.getSession();
       if (existingData?.session) {
@@ -75,10 +78,13 @@ export async function initAnonymousSession(): Promise<string> {
         return _session.access_token;
       }
       if (error) {
-        console.warn('[MonuScript] Supabase anonymous auth unavailable, using local visitor isolation:', error.message);
+        if ((error as any).code === 'anonymous_provider_disabled' || error.message?.includes('Anonymous sign-ins are disabled')) {
+          _anonymousProviderDisabled = true;
+        }
+        console.warn('[MonuScript] Supabase anonymous auth unavailable, using persistent browser visitor isolation:', error.message);
       }
     } catch (err) {
-      console.warn('[MonuScript] Supabase init caught error, using local visitor isolation:', err);
+      console.warn('[MonuScript] Supabase init caught error, using persistent browser visitor isolation:', err);
     }
   }
 
@@ -91,7 +97,7 @@ export async function initAnonymousSession(): Promise<string> {
  * Never returns null – always provides an authenticated visitor identity.
  */
 export async function getAuthToken(): Promise<string> {
-  if (supabase) {
+  if (supabase && !_anonymousProviderDisabled) {
     try {
       const { data } = await supabase.auth.getSession();
       if (data?.session?.access_token) {

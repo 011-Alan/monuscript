@@ -93,3 +93,60 @@ def test_conversation_lifecycle(client):
     # 5. Verify deleted
     resp = client.get(f"/api/v1/conversations/{conv_id}", headers=TEST_AUTH_HEADERS)
     assert resp.status_code == 404
+
+
+def test_sync_conversations_batch_endpoint(client):
+    """POST /api/v1/conversations/sync batch upserts client-side conversations and messages."""
+    sync_payload = {
+        "conversations": [
+            {
+                "id": "client-sync-conv-1",
+                "title": "Restored Offline Conversation",
+                "created_at": "2026-10-25T10:00:00Z",
+                "updated_at": "2026-10-25T10:05:00Z"
+            }
+        ],
+        "messages": {
+            "client-sync-conv-1": [
+                {
+                    "id": "client-sync-msg-1",
+                    "role": "user",
+                    "content": "Analysis of India Gate",
+                    "image_url": "/uploads/test.jpg",
+                    "created_at": "2026-10-25T10:00:01Z"
+                },
+                {
+                    "id": "client-sync-msg-2",
+                    "role": "assistant",
+                    "content": "Identified as India Gate with high confidence.",
+                    "created_at": "2026-10-25T10:00:05Z",
+                    "results": [
+                        {
+                            "id": "res-sync-1",
+                            "monument_id": "india_gate",
+                            "score": 0.88,
+                            "score_type": "svm_probability",
+                            "accepted": True,
+                            "metadata": {"arch": "Triumphal Arch"}
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+
+    resp = client.post("/api/v1/conversations/sync", json=sync_payload, headers=TEST_AUTH_HEADERS)
+    assert resp.status_code == 200
+    res_data = resp.get_json()
+    assert res_data["success"] is True
+    assert res_data["synced_conversations"] >= 1
+    assert res_data["synced_messages"] == 2
+
+    # Verify that the synced conversation and messages can be fetched via GET /api/v1/conversations/<id>
+    get_resp = client.get("/api/v1/conversations/client-sync-conv-1", headers=TEST_AUTH_HEADERS)
+    assert get_resp.status_code == 200
+    conv_data = get_resp.get_json()
+    assert conv_data["conversation"]["title"] == "Restored Offline Conversation"
+    assert len(conv_data["messages"]) == 2
+    assert conv_data["messages"][0]["content"] == "Analysis of India Gate"
+    assert conv_data["messages"][1]["results"][0]["monument_id"] == "india_gate"

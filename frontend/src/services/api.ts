@@ -191,3 +191,19 @@ export async function recognizeImage(
 
   return data;
 }
+
+export async function syncConversations(payload: {
+  conversations: Conversation[];
+  messages: Record<string, Message[]>;
+}): Promise<{ success: boolean; synced_conversations: number; synced_messages: number }> {
+  const res = await fetch(`${API_BASE}/conversations/sync`, {
+    method: 'POST',
+    headers: await authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.error?.message || `Sync failed (${res.status})`);
+  }
+  return res.json();
+}

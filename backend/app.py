@@ -23,7 +23,8 @@ from database.db import (
     get_conversation,
     rename_conversation,
     delete_conversation,
-    get_conversation_history
+    get_conversation_history,
+    sync_conversations_batch
 )
 from services.monument_service import get_all_monuments, get_monument_by_id
 from services.recognition_service import process_recognition_request
@@ -281,6 +282,22 @@ def create_app():
             }), 404
         delete_conversation(conv_id, g.user_id)
         return jsonify({"success": True, "message": "Conversation deleted successfully."}), 200
+
+    @app.route("/api/v1/conversations/sync", methods=["POST", "OPTIONS"])
+    @app.route("/conversations/sync", methods=["POST", "OPTIONS"])
+    @require_auth
+    def sync_conversations():
+        if request.method == "OPTIONS":
+            return "", 200
+        data = request.get_json(silent=True) or {}
+        convs = data.get("conversations", [])
+        msgs = data.get("messages", {})
+        synced_c, synced_m = sync_conversations_batch(g.user_id, convs, msgs)
+        return jsonify({
+            "success": True,
+            "synced_conversations": synced_c,
+            "synced_messages": synced_m
+        }), 200
 
     # ==================== Upload Static Serving ====================
 

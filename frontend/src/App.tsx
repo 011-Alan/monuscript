@@ -15,11 +15,33 @@ import {
   FeatureSummary 
 } from './types';
 import * as api from './services/api';
+import * as storage from './services/storage';
 
 export const App: React.FC = () => {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [activeConvId, setActiveConvId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  // 1. Instant Synchronous Initialization from Browser Shared Memory (zero flicker on refresh)
+  const [conversations, setConversations] = useState<Conversation[]>(() => {
+    return storage.getLocalConversations();
+  });
+
+  const [activeConvId, setActiveConvId] = useState<string | null>(() => {
+    const localActive = storage.getLocalActiveConvId();
+    if (localActive) return localActive;
+    const localConvs = storage.getLocalConversations();
+    return localConvs.length > 0 ? localConvs[0].id : null;
+  });
+
+  const [messages, setMessages] = useState<Message[]>(() => {
+    const localActive = storage.getLocalActiveConvId();
+    if (localActive) {
+      return storage.getLocalMessages(localActive);
+    }
+    const localConvs = storage.getLocalConversations();
+    if (localConvs.length > 0) {
+      return storage.getLocalMessages(localConvs[0].id);
+    }
+    return [];
+  });
+
   const [monuments, setMonuments] = useState<MonumentMetadata[]>([]);
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -38,26 +60,89 @@ export const App: React.FC = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Initial load
+  // Initial load & background synchronization
   useEffect(() => {
     loadInitialData();
   }, []);
 
+  // Multi-tab shared memory listener: keep all tabs in the same browser synchronized in real time
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (!e.key || !e.key.startsWith('monuscript_')) return;
+      const updatedConvs = storage.getLocalConversations();
+      setConversations(updatedConvs);
+      const currentActiveId = storage.getLocalActiveConvId();
+      if (currentActiveId) {
+        if (currentActiveId !== activeConvId) {
+          setActiveConvId(currentActiveId);
+        }
+        setMessages(storage.getLocalMessages(currentActiveId));
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [activeConvId]);
+
   const loadInitialData = async () => {
     try {
-      const [healthData, monumentsData, convsData] = await Promise.all([
+      // 1. Ensure local active conversation is selected if present
+      const localConvs = storage.getLocalConversations();
+      const localActive = storage.getLocalActiveConvId() || (localConvs.length > 0 ? localConvs[0].id : null);
+      if (localConvs.length > 0) {
+        setConversations(localConvs);
+        if (localActive) {
+          setActiveConvId(localActive);
+          setMessages(storage.getLocalMessages(localActive));
+        }
+      }
+
+      // 2. Fetch backend metadata and remote conversations in background
+      const [healthData, monumentsData, remoteConvs] = await Promise.all([
         api.fetchHealth().catch(() => null),
         api.fetchMonuments().catch(() => []),
-        api.fetchConversations().catch(() => [])
+        api.fetchConversations().catch(() => null)
       ]);
 
-      setHealth(healthData);
-      setMonuments(monumentsData);
-      setConversations(convsData);
+      if (healthData) setHealth(healthData);
+      if (monumentsData) setMonuments(monumentsData);
 
-      if (convsData.length > 0) {
-        selectConversation(convsData[0].id);
-      } else {
+      // 3. Reconcile browser shared memory with backend SQLite database
+      if (remoteConvs !== null && Array.isArray(remoteConvs)) {
+        const merged = storage.mergeConversations(localConvs, remoteConvs);
+        storage.saveLocalConversations(merged);
+        setConversations(merged);
+
+        // Sync any local conversations missing on remote (e.g. if backend container was restarted)
+        const missingOnRemote = localConvs.filter(lc => !remoteConvs.some(rc => rc.id === lc.id));
+        if (missingOnRemote.length > 0) {
+          const localMsgsMap: Record<string, Message[]> = {};
+          for (const mc of missingOnRemote) {
+            localMsgsMap[mc.id] = storage.getLocalMessages(mc.id);
+          }
+          api.syncConversations({ conversations: missingOnRemote, messages: localMsgsMap }).catch(() => {});
+        }
+
+        const targetId = localActive || (merged.length > 0 ? merged[0].id : null);
+        if (targetId) {
+          setActiveConvId(targetId);
+          storage.setLocalActiveConvId(targetId);
+
+          // Fetch latest remote message history and merge with local
+          try {
+            const details = await api.fetchConversationDetails(targetId);
+            const localMsgs = storage.getLocalMessages(targetId);
+            const mergedMsgs = storage.mergeMessages(localMsgs, details.messages);
+            storage.saveLocalMessages(targetId, mergedMsgs);
+            setMessages(mergedMsgs);
+          } catch {
+            // Keep local messages intact if remote detail fetch fails
+            setMessages(storage.getLocalMessages(targetId));
+          }
+        } else {
+          createNewConversation();
+        }
+      } else if (localConvs.length === 0) {
+        // First visit with empty storage and unreachable/empty backend
         createNewConversation();
       }
     } catch (err) {
@@ -67,48 +152,89 @@ export const App: React.FC = () => {
 
   const selectConversation = async (id: string) => {
     setActiveConvId(id);
+    storage.setLocalActiveConvId(id);
+
+    // Immediately restore messages from browser shared memory (zero latency)
+    const localMsgs = storage.getLocalMessages(id);
+    setMessages(localMsgs);
+
+    // Fetch remote details in background to sync any updates
     try {
       const details = await api.fetchConversationDetails(id);
-      setMessages(details.messages);
+      const merged = storage.mergeMessages(localMsgs, details.messages);
+      storage.saveLocalMessages(id, merged);
+      setMessages(merged);
     } catch (err) {
-      console.error('Failed to load conversation details:', err);
+      console.warn('Backend unavailable, using browser shared memory:', err);
     }
   };
 
   const createNewConversation = async () => {
+    const newId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const newConv: Conversation = {
+      id: newId,
+      title: 'New Monument Exploration',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+
+    // 1. Immediately persist in browser shared memory
+    storage.upsertLocalConversation(newConv);
+    storage.setLocalActiveConvId(newId);
+    storage.saveLocalMessages(newId, []);
+
+    // 2. Immediately update local UI
+    setConversations(prev => [newConv, ...prev.filter(c => c.id !== newId)]);
+    setActiveConvId(newId);
+    setMessages([]);
+
+    // 3. Create on backend in background
     try {
-      const newConv = await api.createConversation('New Monument Exploration');
-      setConversations(prev => [newConv, ...prev]);
-      setActiveConvId(newConv.id);
-      setMessages([]);
+      const backendConv = await api.createConversation('New Monument Exploration');
+      if (backendConv && backendConv.id) {
+        storage.deleteLocalConversation(newId);
+        storage.upsertLocalConversation(backendConv);
+        storage.setLocalActiveConvId(backendConv.id);
+        setConversations(prev => [backendConv, ...prev.filter(c => c.id !== newId && c.id !== backendConv.id)]);
+        setActiveConvId(backendConv.id);
+      }
     } catch (err) {
-      console.error('Failed to create new conversation:', err);
+      console.warn('Backend conversation creation delayed, persisted locally in browser:', err);
     }
   };
 
   const handleRename = async (id: string, newTitle: string) => {
+    // 1. Update browser shared memory immediately
+    storage.renameLocalConversation(id, newTitle);
+    setConversations(prev => prev.map(c => (c.id === id ? { ...c, title: newTitle } : c)));
+
+    // 2. Sync to backend
     try {
-      const updated = await api.renameConversation(id, newTitle);
-      setConversations(prev => prev.map(c => (c.id === id ? updated : c)));
+      await api.renameConversation(id, newTitle);
     } catch (err) {
-      console.error('Failed to rename conversation:', err);
+      console.warn('Failed to rename on backend, retained in browser storage:', err);
     }
   };
 
   const handleDelete = async (id: string) => {
+    // 1. Delete from browser shared memory
+    storage.deleteLocalConversation(id);
+    const remaining = conversations.filter(c => c.id !== id);
+    setConversations(remaining);
+
+    if (activeConvId === id) {
+      if (remaining.length > 0) {
+        selectConversation(remaining[0].id);
+      } else {
+        createNewConversation();
+      }
+    }
+
+    // 2. Sync deletion to backend
     try {
       await api.deleteConversation(id);
-      const remaining = conversations.filter(c => c.id !== id);
-      setConversations(remaining);
-      if (activeConvId === id) {
-        if (remaining.length > 0) {
-          selectConversation(remaining[0].id);
-        } else {
-          createNewConversation();
-        }
-      }
     } catch (err) {
-      console.error('Failed to delete conversation:', err);
+      console.warn('Failed to delete on backend:', err);
     }
   };
 
@@ -117,16 +243,35 @@ export const App: React.FC = () => {
 
     let targetConvId = activeConvId;
     if (!targetConvId) {
-      try {
-        const newConv = await api.createConversation('New Monument Exploration');
-        setConversations(prev => [newConv, ...prev]);
-        setActiveConvId(newConv.id);
-        targetConvId = newConv.id;
-      } catch {
-        targetConvId = `conv_${Date.now()}`;
-        setActiveConvId(targetConvId);
-      }
+      const fallbackId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const fallbackConv: Conversation = {
+        id: fallbackId,
+        title: 'New Monument Exploration',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      storage.upsertLocalConversation(fallbackConv);
+      storage.setLocalActiveConvId(fallbackId);
+      setConversations(prev => [fallbackConv, ...prev]);
+      setActiveConvId(fallbackId);
+      targetConvId = fallbackId;
     }
+
+    // 1. Create immediate local user message with object URL preview
+    const previewUrl = URL.createObjectURL(file);
+    const userMsgId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const userMsg: Message = {
+      id: userMsgId,
+      conversation_id: targetConvId,
+      role: 'user',
+      content: 'Uploaded monument photograph for architectural analysis.',
+      image_url: previewUrl,
+      created_at: new Date().toISOString()
+    };
+
+    // Immediately save and display user message
+    storage.appendLocalMessage(targetConvId, userMsg);
+    setMessages(prev => [...prev, userMsg]);
 
     try {
       const response = await api.recognizeImage(
@@ -139,65 +284,60 @@ export const App: React.FC = () => {
         setActiveFeatureSummary(response.feature_summary);
       }
 
-      // Re-fetch message history to guarantee full synchronization with SQLite database
-      try {
-        const details = await api.fetchConversationDetails(targetConvId);
-        setMessages(details.messages);
-      } catch {
-        // Optimistic UI fallback if conversation detail fetch fails
-        if (response.message) {
-          setMessages(prev => [
-            ...prev,
-            {
-              id: 'user-' + Date.now(),
-              conversation_id: targetConvId!,
-              role: 'user',
-              content: 'Uploaded monument photograph for architectural analysis.',
-              image_url: response.image?.url || null,
-              created_at: new Date().toISOString()
-            },
-            {
-              id: 'asst-' + Date.now(),
-              conversation_id: targetConvId!,
-              role: 'assistant',
-              content: response.message,
-              image_url: null,
-              created_at: new Date().toISOString(),
-              results: (response.results || []).map((r: any) => ({
-                id: 'res-' + Math.random(),
-                monument_id: r.monument_id,
-                score: r.score,
-                score_type: r.score_type || 'recognition_score',
-                accepted: true,
-                metadata: r
-              }))
-            }
-          ]);
-        }
-      }
+      // 2. Create assistant response message
+      const asstMsgId = `asst_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const asstMsg: Message = {
+        id: asstMsgId,
+        conversation_id: targetConvId,
+        role: 'assistant',
+        content: response.message,
+        image_url: null,
+        created_at: new Date().toISOString(),
+        results: (response.results || []).map((r: any) => ({
+          id: `res_${Math.random().toString(36).slice(2, 9)}`,
+          monument_id: r.monument_id,
+          score: r.score,
+          score_type: r.score_type || 'recognition_score',
+          accepted: response.accepted,
+          metadata: r
+        }))
+      };
 
-      // Auto-update conversation title if it was default
+      // Persist assistant message in browser shared memory and UI
+      storage.appendLocalMessage(targetConvId, asstMsg);
+      setMessages(prev => [...prev, asstMsg]);
+
+      // 3. Update conversation title if default
       const currentConv = conversations.find(c => c.id === targetConvId);
       if (currentConv && currentConv.title === 'New Monument Exploration' && response.top_class) {
         const readableTitle = response.top_class.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-        handleRename(targetConvId, `${readableTitle} Exploration`);
+        const newTitle = `${readableTitle} Exploration`;
+        handleRename(targetConvId, newTitle);
+      }
+
+      // 4. Background synchronization with backend details if available
+      try {
+        const details = await api.fetchConversationDetails(targetConvId);
+        const localCurrent = storage.getLocalMessages(targetConvId);
+        const merged = storage.mergeMessages(localCurrent, details.messages);
+        storage.saveLocalMessages(targetConvId, merged);
+        setMessages(merged);
+      } catch {
+        // Local messages remain 100% intact
       }
     } catch (err: any) {
       console.error('Recognition error:', err);
-      // Append local system error message
       const errorText = err.message || "MonuScript is having trouble reaching the recognition service. Please check your backend connection.";
-      setMessages(prev => [
-        ...prev,
-        {
-          id: 'error-' + Date.now(),
-          conversation_id: targetConvId || 'default',
-          role: 'assistant',
-          content: `⚠️ Recognition issue: ${errorText}`,
-          image_url: null,
-          created_at: new Date().toISOString()
-        }
-      ]);
-      // Re-throw so ImageUploader knows not to clear the preview and can show the error banner
+      const errorMsg: Message = {
+        id: `error_${Date.now()}`,
+        conversation_id: targetConvId,
+        role: 'assistant',
+        content: `⚠️ Recognition issue: ${errorText}`,
+        image_url: null,
+        created_at: new Date().toISOString()
+      };
+      storage.appendLocalMessage(targetConvId, errorMsg);
+      setMessages(prev => [...prev, errorMsg]);
       throw err;
     } finally {
       setIsLoading(false);
