@@ -87,6 +87,7 @@ class MonumentPredictor:
                 processing_time_ms: float
                 image_info: dict
                 feature_summary: dict (for educational explanation of feature groups)
+                diagnostics: dict (rich debug information for developer feature inspection)
         """
         t0 = time.time()
 
@@ -147,6 +148,39 @@ class MonumentPredictor:
             }
         }
 
+        # Developer / debug diagnostic inspection metadata (Requirement 8)
+        diagnostics = {
+            "model_version": "2.0-dip-svm-architectural",
+            "model_type": "Support Vector Machine (RBF kernel, C=2.0)",
+            "probability_calibration_method": "Platt Scaling (logistic sigmoid on SVM decision margins)",
+            "predicted_class": decision["top_class"],
+            "top_score": round(float(decision["top_score"]), 3),
+            "competing_candidates": [
+                {"class": self.classes[i], "score": round(float(probs[i]), 3)}
+                for i in np.argsort(probs)[::-1][:3]
+            ],
+            "confidence_margin": round(float(decision["score_margin"]), 3),
+            "rejection_thresholds": {
+                "accept_threshold": self.judge.accept_threshold,
+                "margin_threshold": self.judge.margin_threshold,
+                "uncertain_threshold": self.judge.uncertain_threshold,
+                "max_centroid_distance": self.judge.max_centroid_distance
+            },
+            "centroid_distance": round(decision["centroid_distance"], 2) if decision["centroid_distance"] is not None else None,
+            "rejection_reason": decision["rejection_reason"],
+            "preprocessing_pipeline": {
+                "clahe_applied": self.use_clahe,
+                "clahe_clip_limit": self.clahe_clip_limit,
+                "color_space": "CIE LAB Luminance + Syllabus ITU-R BT.601 Grayscale",
+                "target_resolution": "256x256"
+            },
+            "feature_space": {
+                "total_dimensions": len(feats),
+                "z_score_clipped": True,
+                "clip_range": "[-5.0, 5.0]"
+            }
+        }
+
         return {
             "success": True,
             "accepted": decision["accepted"],
@@ -162,7 +196,8 @@ class MonumentPredictor:
                 "width": orig_w,
                 "height": orig_h
             },
-            "feature_summary": feature_summary
+            "feature_summary": feature_summary,
+            "diagnostics": diagnostics
         }
 
     def predict_multiple_candidates(self, image_input, max_regions=5):
