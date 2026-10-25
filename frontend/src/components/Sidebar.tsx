@@ -142,8 +142,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           {filtered.length === 0 ? (
-            <div className="px-3 py-6 text-center text-xs text-stone-500">
-              No conversations found.
+            <div className="px-3 py-8 text-center space-y-1.5">
+              <p className="text-xs font-medium text-stone-500">
+                {conversations.length === 0 ? 'No past explorations' : 'No matching explorations found.'}
+              </p>
+              {conversations.length === 0 && (
+                <p className="text-[11px] text-stone-400">
+                  Upload an image to start a new exploration.
+                </p>
+              )}
             </div>
           ) : (
             filtered.map((conv) => {

@@ -64,22 +64,21 @@ export const App: React.FC = () => {
   });
 
   const [activeConvId, setActiveConvId] = useState<string | null>(() => {
-    const localActive = storage.getLocalActiveConvId();
-    if (localActive) return localActive;
     const localConvs = storage.getLocalConversations();
-    return localConvs.length > 0 ? localConvs[0].id : null;
+    if (localConvs.length === 0) return null;
+    const localActive = storage.getLocalActiveConvId();
+    if (localActive && localConvs.some(c => c.id === localActive)) return localActive;
+    return localConvs[0].id;
   });
 
   const [messages, setMessages] = useState<Message[]>(() => {
+    const localConvs = storage.getLocalConversations();
+    if (localConvs.length === 0) return [];
     const localActive = storage.getLocalActiveConvId();
-    if (localActive) {
+    if (localActive && localConvs.some(c => c.id === localActive)) {
       return storage.getLocalMessages(localActive);
     }
-    const localConvs = storage.getLocalConversations();
-    if (localConvs.length > 0) {
-      return storage.getLocalMessages(localConvs[0].id);
-    }
-    return [];
+    return storage.getLocalMessages(localConvs[0].id);
   });
 
   const [monuments, setMonuments] = useState<MonumentMetadata[]>([]);
@@ -125,15 +124,20 @@ export const App: React.FC = () => {
 
   const loadInitialData = async () => {
     try {
-      // 1. Ensure local active conversation is selected if present
+      // 1. Ensure local active conversation is selected only if conversations exist
       const localConvs = storage.getLocalConversations();
-      const localActive = storage.getLocalActiveConvId() || (localConvs.length > 0 ? localConvs[0].id : null);
-      if (localConvs.length > 0) {
-        setConversations(localConvs);
-        if (localActive) {
-          setActiveConvId(localActive);
-          setMessages(storage.getLocalMessages(localActive));
-        }
+      if (localConvs.length === 0) {
+        setActiveConvId(null);
+        storage.setLocalActiveConvId(null);
+        setMessages([]);
+      } else {
+        const localActive = storage.getLocalActiveConvId();
+        const validActive = (localActive && localConvs.some(c => c.id === localActive))
+          ? localActive
+          : localConvs[0].id;
+        setActiveConvId(validActive);
+        storage.setLocalActiveConvId(validActive);
+        setMessages(storage.getLocalMessages(validActive));
       }
 
       // 2. Fetch backend metadata and remote conversations in background
@@ -162,8 +166,16 @@ export const App: React.FC = () => {
           api.syncConversations({ conversations: missingOnRemote, messages: localMsgsMap }).catch(() => {});
         }
 
-        const targetId = localActive || (merged.length > 0 ? merged[0].id : null);
-        if (targetId) {
+        if (merged.length === 0) {
+          // Clean initial state: no conversations exist
+          setActiveConvId(null);
+          storage.setLocalActiveConvId(null);
+          setMessages([]);
+        } else {
+          const currentActive = storage.getLocalActiveConvId();
+          const targetId = (currentActive && merged.some(c => c.id === currentActive))
+            ? currentActive
+            : merged[0].id;
           setActiveConvId(targetId);
           storage.setLocalActiveConvId(targetId);
 
@@ -178,12 +190,12 @@ export const App: React.FC = () => {
             // Keep local messages intact if remote detail fetch fails
             setMessages(storage.getLocalMessages(targetId));
           }
-        } else {
-          createNewConversation();
         }
       } else if (localConvs.length === 0) {
-        // First visit with empty storage and unreachable/empty backend
-        createNewConversation();
+        // Initial visit with empty storage
+        setActiveConvId(null);
+        storage.setLocalActiveConvId(null);
+        setMessages([]);
       }
     } catch (err) {
       console.error('Failed to initialize application:', err);
@@ -209,38 +221,11 @@ export const App: React.FC = () => {
     }
   };
 
-  const createNewConversation = async () => {
-    const newId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const newConv: Conversation = {
-      id: newId,
-      title: 'New Monument Exploration',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    // 1. Immediately persist in browser shared memory
-    storage.upsertLocalConversation(newConv);
-    storage.setLocalActiveConvId(newId);
-    storage.saveLocalMessages(newId, []);
-
-    // 2. Immediately update local UI
-    setConversations(prev => [newConv, ...prev.filter(c => c.id !== newId)]);
-    setActiveConvId(newId);
+  const handleNewExploration = () => {
+    // Reset to clean initial exploration state ready for a new monument photo
+    setActiveConvId(null);
+    storage.setLocalActiveConvId(null);
     setMessages([]);
-
-    // 3. Create on backend in background
-    try {
-      const backendConv = await api.createConversation('New Monument Exploration');
-      if (backendConv && backendConv.id) {
-        storage.deleteLocalConversation(newId);
-        storage.upsertLocalConversation(backendConv);
-        storage.setLocalActiveConvId(backendConv.id);
-        setConversations(prev => [backendConv, ...prev.filter(c => c.id !== newId && c.id !== backendConv.id)]);
-        setActiveConvId(backendConv.id);
-      }
-    } catch (err) {
-      console.warn('Backend conversation creation delayed, persisted locally in browser:', err);
-    }
   };
 
   const handleRename = async (id: string, newTitle: string) => {
@@ -266,7 +251,10 @@ export const App: React.FC = () => {
       if (remaining.length > 0) {
         selectConversation(remaining[0].id);
       } else {
-        createNewConversation();
+        // Deleted the only conversation: return to initial state with "No past explorations"
+        setActiveConvId(null);
+        storage.setLocalActiveConvId(null);
+        setMessages([]);
       }
     }
 
@@ -440,7 +428,7 @@ export const App: React.FC = () => {
         conversations={conversations}
         activeId={activeConvId}
         onSelect={selectConversation}
-        onNew={createNewConversation}
+        onNew={handleNewExploration}
         onRename={handleRename}
         onDelete={handleDelete}
         onOpenMonuments={() => setMonumentsModalOpen(true)}
@@ -451,7 +439,7 @@ export const App: React.FC = () => {
       {/* Main Workspace Area */}
       <main className="flex-1 flex flex-col min-w-0 bg-[#FAF8F5] relative">
         <ChatHeader
-          title={activeConv?.title || 'MonuScript Workspace'}
+          title={activeConv?.title || 'Indian Monument Exploration'}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
           health={health}
           multiMode={multiMode}
