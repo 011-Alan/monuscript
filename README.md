@@ -136,5 +136,21 @@ For full mathematical documentation including symbol definitions, derivations, a
 
 ---
 
-## 8. License
+## 8. 3D Monument Models & Attributions
+Interactive 3D monument visualizations in MonuScript are embedded via [Sketchfab](https://sketchfab.com) and created by 3D artists. All models are credited with their respective creators and license terms below:
+
+| Monument | 3D Model Title | Artist / Creator | Platform & Model Link | License |
+| :--- | :--- | :--- | :--- | :--- |
+| **Taj Mahal** | [Taj Mahal](https://sketchfab.com/3d-models/taj-mahal-33149233cefd492b9abdd50fe5a8c921) | [uday14viru](https://sketchfab.com/uday14viru) | Sketchfab | Editorial / Standard |
+| **Qutub Minar** | [Qutub Minar](https://sketchfab.com/3d-models/qutub-minar-e165e25ec8f1497aa83ab72419f40ddc) | [3D Dreamscapes](https://sketchfab.com/pradeep1) | Sketchfab | Standard License |
+| **Red Fort (Lal Qila)** | [Red Fort- Delhi](https://sketchfab.com/3d-models/red-fort-delhi-74ff6d703a174f9fb1ba266003f5c4fc) | [STHAPATYA](https://sketchfab.com/Sthapatya) | Sketchfab | Standard License |
+| **India Gate** | [India Gate](https://sketchfab.com/3d-models/india-gate-59fe55328271479d82acb65310178d99) | [Macwelshman](https://sketchfab.com/Macwelshman) | Sketchfab | Standard License |
+| **Charminar** | [Charminar, Hyderabad](https://sketchfab.com/3d-models/charminar-hyderabad-82603f1fe3ed4c31b37786e2bc2b63b0) | [Dolores](https://sketchfab.com/upto21) | Sketchfab | [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/) |
+| **Hawa Mahal** | [hawa mahal 3d model](https://sketchfab.com/3d-models/hawa-mahal-3d-model-c6bbf5822010490d995869ae625b1be0) | [meigandan](https://sketchfab.com/meigandan) | Sketchfab | Standard License |
+
+> We express our gratitude to the 3D artists and heritage preservationists on Sketchfab for their architectural digital reconstructions of Indian monuments.
+
+---
+
+## 9. License
 Academic project released under the MIT License. Monument images sourced from Wikimedia Commons under Creative Commons licenses (see `backend/data/dataset_catalog.json`).
