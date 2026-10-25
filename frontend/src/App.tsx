@@ -270,7 +270,10 @@ export const App: React.FC = () => {
     setIsLoading(true);
 
     let targetConvId = activeConvId;
+    let isBrandNewConversation = false;
+
     if (!targetConvId) {
+      isBrandNewConversation = true;
       const fallbackId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const fallbackConv: Conversation = {
         id: fallbackId,
@@ -280,10 +283,14 @@ export const App: React.FC = () => {
       };
       storage.upsertLocalConversation(fallbackConv);
       storage.setLocalActiveConvId(fallbackId);
-      setConversations(prev => [fallbackConv, ...prev]);
+      setConversations(prev => [fallbackConv, ...prev.filter(c => c.id !== fallbackId)]);
       setActiveConvId(fallbackId);
       targetConvId = fallbackId;
     }
+
+    // Check if this is the very first detection for this conversation
+    const existingMsgs = storage.getLocalMessages(targetConvId);
+    const isFirstDetection = isBrandNewConversation || existingMsgs.filter(m => m.role === 'assistant').length === 0;
 
     // 1. Create immediate lightweight thumbnail data URL so photo persists across page refreshes
     let initialImageUrl: string;
@@ -379,12 +386,18 @@ export const App: React.FC = () => {
         return [...withoutTemp, finalUserMsg, asstMsg];
       });
 
-      // 5. Update conversation title if default
-      const currentConv = conversations.find(c => c.id === targetConvId);
-      if (currentConv && currentConv.title === 'New Monument Exploration' && response.top_class) {
-        const readableTitle = response.top_class.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-        const newTitle = `${readableTitle} Exploration`;
-        handleRename(targetConvId, newTitle);
+      // 5. Name the conversation based on the image detected the first time alone
+      if (isFirstDetection) {
+        let detectedName = '';
+        if (response.results && response.results.length > 0 && response.results[0].name) {
+          detectedName = response.results[0].name;
+        } else if (response.top_class) {
+          detectedName = response.top_class.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+        }
+        if (detectedName) {
+          const newTitle = `${detectedName} Exploration`;
+          handleRename(targetConvId, newTitle);
+        }
       }
 
       // 6. Background synchronization with backend details (cleanly deduplicated because IDs now match)
