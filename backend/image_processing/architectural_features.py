@@ -122,9 +122,10 @@ def extract_architectural_features(gray_image, rgb_image=None):
     gy_mid = np.sum(np.abs(Gy[t1:t2, :]))
     vertical_shaft_dominance = float((gx_mid - gy_mid) / (gx_mid + gy_mid + 1e-6))
 
-    # 6. Qutub Minar: Solid Center Column Continuity
-    center_col_energy = float(np.mean(G[:, int(W * 0.45):int(W * 0.55)]))
-    solid_center_continuity = float(center_col_energy / (np.mean(G) + 1e-4))
+    # 6. Qutub Minar: Solid Center Column Concentration (Tower concentrated in center columns vs sky flanks)
+    mid_e = float(np.mean(G[:, c_mid_1:c_mid_2]))
+    side_e = float(0.5 * (np.mean(G[:, :c_left_2]) + np.mean(G[:, c_right_1:])) + 1e-4)
+    solid_center_continuity = float(np.clip(mid_e / side_e, 0.0, 5.0)) / 5.0
 
     # 7. Hawa Mahal: Window Opening / Jharokha Density (Black Top-Hat)
     k_window = cv2.getStructuringElement(cv2.MORPH_RECT, (7, 7))
@@ -136,22 +137,26 @@ def extract_architectural_features(gray_image, rgb_image=None):
     facade_std_map = cv2.filter2D(I[t1:t2, int(W * 0.2):int(W * 0.8)] ** 2, -1, np.ones((5, 5))/25.0)
     facade_grid_heterogeneity = float(np.var(facade_std_map))
 
-    # 9. Taj Mahal: Dome Circularity in Upper Quadrant
-    upper_gray = gray_image[:int(H * 0.45), int(W * 0.25):int(W * 0.75)]
-    circles = cv2.HoughCircles(
-        upper_gray, cv2.HOUGH_GRADIENT, dp=1.2, minDist=30,
-        param1=50, param2=30, minRadius=15, maxRadius=int(W * 0.35)
-    )
-    dome_circularity = 1.0 if circles is not None else 0.0
+    # 9. Taj Mahal: Dome Circularity in Upper Central Corridor
+    upper_gray = gray_image[int(H * 0.08):int(H * 0.50), int(W * 0.30):int(W * 0.70)]
+    if upper_gray.shape[0] > 20 and upper_gray.shape[1] > 20:
+        circles = cv2.HoughCircles(
+            upper_gray, cv2.HOUGH_GRADIENT, dp=1.2, minDist=30,
+            param1=60, param2=38, minRadius=15, maxRadius=int(W * 0.25)
+        )
+        dome_circularity = 1.0 if circles is not None else 0.0
+    else:
+        dome_circularity = 0.0
 
-    # 10. Taj Mahal: White Marble High-Luminance Ratio
+    # 10. Taj Mahal: White Marble High-Luminance Ratio (masked to structural/non-sky pixels)
+    struct_mask = (G > 14.0) | (np.arange(H)[:, None] > int(H * 0.45))
     if rgb_image is not None and rgb_image.ndim == 3:
         hsv = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2HSV)
-        # White marble: High Value (V > 160) and Low Saturation (S < 65)
-        white_mask = (hsv[:, :, 2] > 160) & (hsv[:, :, 1] < 65)
-        marble_whiteness_ratio = float(np.mean(white_mask))
+        white_mask = (hsv[:, :, 2] > 165) & (hsv[:, :, 1] < 60) & struct_mask
+        marble_whiteness_ratio = float(np.sum(white_mask)) / float(np.sum(struct_mask) + 1e-5)
     else:
-        marble_whiteness_ratio = float(np.mean(I > 0.70))
+        white_mask = (I > 0.72) & struct_mask
+        marble_whiteness_ratio = float(np.sum(white_mask)) / float(np.sum(struct_mask) + 1e-5)
 
     # 11. Bilateral Reflection Symmetry Score
     left_half = I[:, :W // 2]
@@ -189,9 +194,12 @@ def extract_architectural_features(gray_image, rgb_image=None):
     pylon_edge_sides = 0.5 * (np.mean(G[r1:r2, c_left_1:c_left_2]) + np.mean(G[r1:r2, c_right_1:c_right_2])) + 1e-4
     aperture_edge_contrast = float((pylon_edge_sides - arch_edge_center) / (pylon_edge_sides + arch_edge_center + 1e-4))
 
-    # 16. Vertical Slenderness Aspect Ratio
-    slenderness_aspect = float((row_bot - row_top) / (w_bot + 1e-4))
-    slenderness_aspect = float(np.clip(slenderness_aspect, 0.0, 5.0))
+    # 16. Vertical Slenderness Aspect Ratio (Height of active mass vs width)
+    col_e = np.mean(G, axis=0)
+    row_e = np.mean(G, axis=1)
+    w_active = float(np.count_nonzero(col_e > np.mean(col_e) * 0.6))
+    h_active = float(np.count_nonzero(row_e > np.mean(row_e) * 0.6))
+    slenderness_aspect = float(np.clip(h_active / (w_active + 1e-4), 0.0, 5.0))
 
     features = np.array([
         arch_void_contrast,

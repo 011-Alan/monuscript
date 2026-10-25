@@ -12,7 +12,7 @@ class Config:
     UPLOAD_FOLDER = BASE_DIR / "uploads"
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB max upload size
     MAX_IMAGE_DIMENSION = 4096             # Max width or height in pixels
-    ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "bmp", "tiff", "tif"}
+    ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "webp", "bmp", "tiff", "tif", "avif"}
     MODEL_ARTIFACTS_DIR = BASE_DIR / "ml" / "model_artifacts"
     CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*")
     PORT = int(os.getenv("PORT", 5000))

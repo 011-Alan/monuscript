@@ -200,10 +200,16 @@ class MonumentPredictor:
             "diagnostics": diagnostics
         }
 
-    def predict_multiple_candidates(self, image_input, max_regions=5):
+    def predict_multiple_candidates(self, image_input, max_regions=16):
         """
-        Sliding-window / sub-region multi-candidate detection.
-        Evaluates 5 candidate regions: Full image, Top-Half, Left-Half, Right-Half, Center Crop.
+        Sliding-window / sub-region multi-candidate detection for composite and collage photographs.
+        Evaluates candidate spatial sub-regions:
+        - Full image
+        - Left / Right vertical split halves
+        - Top / Bottom horizontal split halves
+        - 2x2 Quadrants (Top-Left, Top-Right, Bottom-Left, Bottom-Right)
+        - 3-Column panels (Left, Center, Right)
+        - Central focal window
         Merges and deduplicates distinct accepted monument classes.
         """
         t0 = time.time()
@@ -212,19 +218,28 @@ class MonumentPredictor:
 
         regions = [
             ("Whole Image", (0, 0, w, h)),
-            ("Center Region", (int(w * 0.15), int(h * 0.15), int(w * 0.85), int(h * 0.85))),
-            ("Left Region", (0, 0, int(w * 0.65), h)),
-            ("Right Region", (int(w * 0.35), 0, w, h)),
-            ("Top Region", (0, 0, w, int(h * 0.70))),
+            ("Left Half", (0, 0, int(w * 0.52), h)),
+            ("Right Half", (int(w * 0.48), 0, w, h)),
+            ("Top Half", (0, 0, w, int(h * 0.52))),
+            ("Bottom Half", (0, int(h * 0.48), w, h)),
+            ("Top-Left Quadrant", (0, 0, int(w * 0.52), int(h * 0.52))),
+            ("Top-Right Quadrant", (int(w * 0.48), 0, w, int(h * 0.52))),
+            ("Bottom-Left Quadrant", (0, int(h * 0.48), int(w * 0.52), h)),
+            ("Bottom-Right Quadrant", (int(w * 0.48), int(h * 0.48), w, h)),
+            ("Center Region", (int(w * 0.18), int(h * 0.18), int(w * 0.82), int(h * 0.82))),
+            ("Left Third", (0, 0, int(w * 0.38), h)),
+            ("Mid Column", (int(w * 0.31), 0, int(w * 0.69), h)),
+            ("Right Third", (int(w * 0.62), 0, w, h)),
+            ("Top Third", (0, 0, w, int(h * 0.38))),
+            ("Bottom Third", (0, int(h * 0.62), w, h)),
         ]
 
         seen_monuments = {}
-        candidate_boxes = []
 
         for region_name, box in regions[:max_regions]:
             crop_img = pil_img.crop(box)
             crop_w, crop_h = crop_img.size
-            if crop_w < 80 or crop_h < 80:
+            if crop_w < 60 or crop_h < 60:
                 continue
 
             feats, _ = extract_features(
@@ -260,7 +275,7 @@ class MonumentPredictor:
                     }
 
         elapsed_ms = round((time.time() - t0) * 1000.0, 1)
-        results = list(seen_monuments.values())
+        results = sorted(seen_monuments.values(), key=lambda r: r["score"], reverse=True)
 
         accepted = len(results) > 0
         message = (

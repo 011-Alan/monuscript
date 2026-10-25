@@ -1,5 +1,5 @@
 {
-  "evaluation_timestamp": "2026-10-25 15:10:14",
+  "evaluation_timestamp": "2026-10-25 23:24:12",
   "test_samples_count": 24,
   "test_accuracy": 0.6667,
   "correct_acceptance_rate": 0.6875,
@@ -7,7 +7,7 @@
   "negative_samples_count": 15,
   "false_acceptance_rate": 0.4,
   "true_rejection_rate": 0.6,
-  "mean_latency_ms": 239.34,
+  "mean_latency_ms": 126.05,
   "confusion_matrix": {
     "classes": [
       "charminar",

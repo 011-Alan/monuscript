@@ -94,7 +94,7 @@ def load_split_data(
 
     for cls in classes:
         cls_dir = split_dir / cls
-        img_files = sorted([f for f in cls_dir.iterdir() if f.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]])
+        img_files = sorted([f for f in cls_dir.iterdir() if f.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp", ".avif", ".bmp", ".tiff"]])
         print(f"  [{cls}] Found {len(img_files)} images")
         for f in img_files:
             try:
@@ -219,10 +219,10 @@ def train_and_tune_model(
     best_model = None
 
     # Hyperparameter search space
-    kernels = ["linear", "rbf"]
-    C_values = [0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0]
+    kernels = ["rbf", "linear"]
+    C_values = [0.2, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0]
     gamma_values = ["scale", "auto", 0.01, 0.005]
-    weighting_options = [False, True]
+    weighting_options = [True, False]
 
     print("\nStarting Hyperparameter Tuning on Validation Split...")
     for use_weights in weighting_options:
@@ -237,6 +237,7 @@ def train_and_tune_model(
                         kernel=kernel,
                         C=C,
                         gamma=gamma,
+                        class_weight="balanced",
                         probability=True,
                         random_state=42
                     )
@@ -245,7 +246,7 @@ def train_and_tune_model(
                     val_preds = clf.predict(X_va_proc)
                     acc = accuracy_score(y_val, val_preds)
 
-                    if acc > best_val_acc:
+                    if acc > best_val_acc or (acc == best_val_acc and use_weights and not best_config.get("use_feature_weights", False)):
                         best_val_acc = acc
                         best_config = {
                             "kernel": kernel,
@@ -266,6 +267,7 @@ def train_and_tune_model(
         kernel=best_config["kernel"],
         C=best_config["C"],
         gamma=best_config["gamma"],
+        class_weight="balanced",
         probability=True,
         random_state=42
     )
