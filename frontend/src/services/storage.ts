@@ -12,7 +12,7 @@
  *    all conversations, messages, and the active conversation ID are persistently shared.
  * 3. Offline & Cold-Start Resilient:
  *    If the backend server is waking up (e.g. Render free tier cold start) or restarts its
- *    ephemeral container, the user's chats are NEVER lost.
+ *    ephemeral container, the user's chats and uploaded photographs are NEVER lost.
  */
 
 import { Conversation, Message, StoredResult } from '../types';
@@ -30,6 +30,36 @@ function getMessagesKey(visitorId: string, convId: string): string {
 
 function getActiveConvKey(visitorId: string): string {
   return `${PREFIX}active_conv_${visitorId}`;
+}
+
+function getThumbCacheKey(key: string): string {
+  // Strip any query parameters or domains so keys normalize cleanly
+  const cleanKey = key.split('?')[0].replace(/^https?:\/\/[^/]+/, '');
+  return `${PREFIX}thumb_${cleanKey}`;
+}
+
+/**
+ * Caches a lightweight image thumbnail data URL in browser storage.
+ */
+export function saveThumbnailCache(key: string, dataUrl: string): void {
+  try {
+    if (!key || !dataUrl || !dataUrl.startsWith('data:')) return;
+    localStorage.setItem(getThumbCacheKey(key), dataUrl);
+  } catch {
+    // Quota reached or private browsing mode - fail gracefully
+  }
+}
+
+/**
+ * Retrieves a cached image thumbnail data URL if available.
+ */
+export function getThumbnailCache(key: string): string | null {
+  try {
+    if (!key) return null;
+    return localStorage.getItem(getThumbCacheKey(key));
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -107,6 +137,13 @@ export function deleteLocalConversation(convId: string): void {
     const remaining = current.filter(c => c.id !== convId);
     saveLocalConversations(remaining);
 
+    // Also clean up any cached thumbnails for these messages
+    const msgs = getLocalMessages(convId);
+    for (const m of msgs) {
+      if (m.id) localStorage.removeItem(getThumbCacheKey(m.id));
+      if (m.image_url) localStorage.removeItem(getThumbCacheKey(m.image_url));
+    }
+
     localStorage.removeItem(getMessagesKey(visitorId, convId));
 
     if (getLocalActiveConvId() === convId) {
@@ -119,6 +156,7 @@ export function deleteLocalConversation(convId: string): void {
 
 /**
  * Returns all messages for a specific conversation from browser shared memory.
+ * Automatically recovers thumbnails from cache if image_url was a remote path.
  */
 export function getLocalMessages(convId: string): Message[] {
   try {
@@ -127,9 +165,25 @@ export function getLocalMessages(convId: string): Message[] {
     const raw = localStorage.getItem(getMessagesKey(visitorId, convId));
     if (!raw) return [];
     const parsed: Message[] = JSON.parse(raw);
-    return Array.isArray(parsed)
+    const msgs = Array.isArray(parsed)
       ? parsed.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
       : [];
+
+    return msgs.map(m => {
+      // Auto-heal: If image_url is a remote path or missing, check if cached thumbnail exists
+      if (m.image_url && !m.image_url.startsWith('data:')) {
+        const cached = getThumbnailCache(m.id) || getThumbnailCache(m.image_url);
+        if (cached) {
+          return { ...m, image_url: cached };
+        }
+      } else if (!m.image_url && m.role === 'user') {
+        const cached = getThumbnailCache(m.id);
+        if (cached) {
+          return { ...m, image_url: cached };
+        }
+      }
+      return m;
+    });
   } catch (err) {
     console.warn(`[MonuScript Storage] Error reading messages for ${convId}:`, err);
     return [];
@@ -143,6 +197,14 @@ export function saveLocalMessages(convId: string, messages: Message[]): void {
   try {
     if (!convId) return;
     const visitorId = getOrCreateLocalVisitorId();
+
+    // Cache any data URL thumbnails for resilient offline & refresh display
+    for (const m of messages) {
+      if (m.image_url && m.image_url.startsWith('data:')) {
+        saveThumbnailCache(m.id, m.image_url);
+      }
+    }
+
     localStorage.setItem(getMessagesKey(visitorId, convId), JSON.stringify(messages));
   } catch (err) {
     console.warn(`[MonuScript Storage] Error saving messages for ${convId}:`, err);
@@ -156,6 +218,12 @@ export function appendLocalMessage(convId: string, message: Message): void {
   try {
     if (!convId) return;
     const existing = getLocalMessages(convId);
+
+    // Cache thumbnail data URL
+    if (message.image_url && message.image_url.startsWith('data:')) {
+      saveThumbnailCache(message.id, message.image_url);
+    }
+
     // Avoid exact duplicate message IDs or redundant identical messages sent in immediate succession
     const isDuplicate = existing.some(m => {
       if (m.id === message.id) return true;
@@ -194,6 +262,13 @@ export function replaceLocalMessage(convId: string, oldMsgId: string, newMsg: Me
   try {
     if (!convId) return;
     const current = getLocalMessages(convId);
+
+    // Ensure thumbnail cache is updated for newMsg ID
+    if (newMsg.image_url && newMsg.image_url.startsWith('data:')) {
+      saveThumbnailCache(newMsg.id, newMsg.image_url);
+      saveThumbnailCache(oldMsgId, newMsg.image_url);
+    }
+
     const updated = current.map(m => (m.id === oldMsgId ? newMsg : m));
     saveLocalMessages(convId, updated);
   } catch (err) {
@@ -267,7 +342,7 @@ export function mergeConversations(local: Conversation[], remote: Conversation[]
  * 1. Matches exact IDs.
  * 2. Matches temporary client IDs (user_* or asst_*) with corresponding remote messages
  *    by role, image presence, and close timestamp.
- * 3. Preserves persistent image URLs and rich recognition results.
+ * 3. CRITICAL: Preserves robust data URL thumbnails so photographs NEVER disappear on refresh!
  * 4. Deduplicates any redundant adjacent messages with identical roles and timestamps.
  */
 export function mergeMessages(local: Message[], remote: Message[]): Message[] {
@@ -280,17 +355,32 @@ export function mergeMessages(local: Message[], remote: Message[]): Message[] {
     if (exactLocalIdx >= 0) {
       const loc = localCopy[exactLocalIdx];
       localCopy.splice(exactLocalIdx, 1);
+
+      // Prioritize data URL thumbnails (loc or cached) over remote /uploads/ URLs that could 404
+      let resolvedImg = loc.image_url;
+      if (!resolvedImg || !resolvedImg.startsWith('data:')) {
+        if (r.image_url && r.image_url.startsWith('data:')) {
+          resolvedImg = r.image_url;
+        } else {
+          const cached = getThumbnailCache(r.id) || (r.image_url ? getThumbnailCache(r.image_url) : null) || getThumbnailCache(loc.id);
+          resolvedImg = cached || loc.image_url || r.image_url;
+        }
+      }
+
+      if (resolvedImg && resolvedImg.startsWith('data:')) {
+        saveThumbnailCache(r.id, resolvedImg);
+      }
+
       mergedList.push({
         ...loc,
         ...r,
-        image_url: r.image_url || loc.image_url,
+        image_url: resolvedImg,
         results: (r.results && r.results.length > 0) ? r.results : (loc.results || [])
       });
       continue;
     }
 
     // 2. Check for temp client message in local corresponding to this remote message
-    // (e.g. temp ID starting with "user_" or "asst_", same role, and timestamp within 45 seconds)
     const tempLocalIdx = localCopy.findIndex(l => {
       if (l.role !== r.role) return false;
       const isClientTemp = l.id.startsWith('user_') || l.id.startsWith('asst_') || l.id.startsWith('error_');
@@ -304,21 +394,49 @@ export function mergeMessages(local: Message[], remote: Message[]): Message[] {
     if (tempLocalIdx >= 0) {
       const loc = localCopy[tempLocalIdx];
       localCopy.splice(tempLocalIdx, 1);
+
+      let resolvedImg = loc.image_url;
+      if (!resolvedImg || !resolvedImg.startsWith('data:')) {
+        if (r.image_url && r.image_url.startsWith('data:')) {
+          resolvedImg = r.image_url;
+        } else {
+          const cached = getThumbnailCache(loc.id) || getThumbnailCache(r.id) || (r.image_url ? getThumbnailCache(r.image_url) : null);
+          resolvedImg = cached || loc.image_url || r.image_url;
+        }
+      }
+
+      if (resolvedImg && resolvedImg.startsWith('data:')) {
+        saveThumbnailCache(r.id, resolvedImg);
+        saveThumbnailCache(loc.id, resolvedImg);
+      }
+
       mergedList.push({
         ...loc,
         ...r,
         id: r.id, // adopt the authoritative server ID
-        image_url: r.image_url || loc.image_url,
+        image_url: resolvedImg,
         results: (r.results && r.results.length > 0) ? r.results : (loc.results || [])
       });
       continue;
     }
 
-    // Otherwise, it's a new remote message
-    mergedList.push(r);
+    // 3. New remote message without local counterpart:
+    // Check if thumbnail is cached
+    let remoteImg = r.image_url;
+    if (remoteImg && !remoteImg.startsWith('data:')) {
+      const cached = getThumbnailCache(r.id) || getThumbnailCache(remoteImg);
+      if (cached) {
+        remoteImg = cached;
+      }
+    }
+
+    mergedList.push({
+      ...r,
+      image_url: remoteImg
+    });
   }
 
-  // 3. Any remaining local messages that were not matched (e.g. offline messages waiting to sync)
+  // 4. Any remaining local messages that were not matched (e.g. offline messages waiting to sync)
   for (const remaining of localCopy) {
     mergedList.push(remaining);
   }
@@ -326,7 +444,7 @@ export function mergeMessages(local: Message[], remote: Message[]): Message[] {
   // Sort chronologically
   mergedList.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
-  // 4. Final deduplication pass: filter out duplicates with identical role and content created within 5s
+  // 5. Final deduplication pass: filter out duplicates with identical role and content created within 5s
   const deduplicated: Message[] = [];
   for (const msg of mergedList) {
     const isDup = deduplicated.some(existing => {

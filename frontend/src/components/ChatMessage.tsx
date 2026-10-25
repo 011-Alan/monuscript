@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { Landmark, User, AlertCircle, Info, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Landmark, User, AlertCircle, Info, Sparkles, RefreshCw } from 'lucide-react';
 import { Message, RecognitionCandidate } from '../types';
 import { RecognitionResult } from './RecognitionResult';
 import { formatImageUrl } from '../services/api';
+import { getThumbnailCache } from '../services/storage';
 
 interface ChatMessageProps {
   message: Message;
@@ -17,6 +18,50 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
 }) => {
   const isUser = message.role === 'user';
   const [imageError, setImageError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+
+  // Compute best available initial image source (prioritizing base64 data URLs)
+  const resolveInitialSrc = (): string | undefined => {
+    if (!message.image_url) return undefined;
+    if (message.image_url.startsWith('data:')) return message.image_url;
+    const cached = getThumbnailCache(message.id) || getThumbnailCache(message.image_url);
+    if (cached) return cached;
+    return formatImageUrl(message.image_url);
+  };
+
+  const [currentSrc, setCurrentSrc] = useState<string | undefined>(resolveInitialSrc);
+
+  // Auto-sync currentSrc if message.image_url or message.id updates
+  useEffect(() => {
+    setImageError(false);
+    setRetryCount(0);
+    setCurrentSrc(resolveInitialSrc());
+  }, [message.id, message.image_url]);
+
+  const handleImageError = () => {
+    // 1. If currently failing on a remote URL, try falling back to the thumbnail cache
+    if (currentSrc && !currentSrc.startsWith('data:')) {
+      const cached = getThumbnailCache(message.id) || getThumbnailCache(message.image_url || '');
+      if (cached && currentSrc !== cached) {
+        setCurrentSrc(cached);
+        return;
+      }
+
+      // 2. Retry up to 2 times with a slight delay (useful if server was waking up from cold-start)
+      if (retryCount < 2) {
+        setRetryCount(prev => prev + 1);
+        setTimeout(() => {
+          const formatted = formatImageUrl(message.image_url);
+          if (formatted) {
+            const sep = formatted.includes('?') ? '&' : '?';
+            setCurrentSrc(`${formatted}${sep}_retry=${Date.now()}`);
+          }
+        }, 1200);
+        return;
+      }
+    }
+    setImageError(true);
+  };
 
   // Format candidate data if present in stored message results
   const candidates: RecognitionCandidate[] = (message.results || [])
@@ -85,19 +130,36 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({
         </div>
 
         {/* User uploaded image thumbnail */}
-        {message.image_url && (
+        {(currentSrc || message.image_url) && (
           <div className="rounded-xl overflow-hidden border border-[#E5DFD7] max-w-sm bg-stone-100 shadow-2xs">
-            {!imageError ? (
+            {!imageError && currentSrc ? (
               <img
-                src={formatImageUrl(message.image_url)}
+                src={currentSrc}
                 alt="Uploaded monument"
                 className="w-full h-auto max-h-72 object-contain bg-stone-900/5 transition-opacity duration-200"
-                onError={() => setImageError(true)}
+                onError={handleImageError}
               />
             ) : (
-              <div className="p-3.5 flex items-center space-x-2.5 text-stone-500 text-xs bg-stone-50">
-                <Sparkles className="w-4 h-4 text-[#C85A32] shrink-0" />
-                <span>Uploaded monument photograph</span>
+              <div className="p-3.5 flex items-center justify-between space-x-2.5 text-stone-500 text-xs bg-stone-50">
+                <div className="flex items-center space-x-2">
+                  <Sparkles className="w-4 h-4 text-[#C85A32] shrink-0" />
+                  <span>Uploaded monument photograph</span>
+                </div>
+                {message.image_url && (
+                  <button
+                    onClick={() => {
+                      setImageError(false);
+                      setRetryCount(0);
+                      const fallback = resolveInitialSrc();
+                      setCurrentSrc(fallback ? `${fallback}${fallback.includes('?') ? '&' : '?'}retry=${Date.now()}` : undefined);
+                    }}
+                    className="inline-flex items-center space-x-1 text-[11px] font-medium text-[#C85A32] hover:underline cursor-pointer"
+                    title="Retry loading photo"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Reload</span>
+                  </button>
+                )}
               </div>
             )}
           </div>

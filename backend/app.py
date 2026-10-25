@@ -327,10 +327,31 @@ def create_app():
             resp.headers["Cache-Control"] = "public, max-age=86400"
             return resp
 
-        # Fallback: search for safe_name directly under UPLOAD_FOLDER or sub-folders
+        # Check under user directory if token or user_id query param provided
+        token = request.args.get("token") or request.args.get("user_id")
+        if token:
+            user_path = (upload_root / token / filename).resolve()
+            if (upload_root in user_path.parents or user_path == upload_root) and user_path.is_file():
+                resp = send_file(user_path)
+                resp.headers["Cache-Control"] = "public, max-age=86400"
+                return resp
+
+        # Check directly in user directories or immediate sub-folders
         safe_name = Path(filename).name
+        try:
+            for sub in upload_root.iterdir():
+                if sub.is_dir():
+                    candidate = (sub / safe_name).resolve()
+                    if upload_root in candidate.parents and candidate.is_file():
+                        resp = send_file(candidate)
+                        resp.headers["Cache-Control"] = "public, max-age=86400"
+                        return resp
+        except Exception:
+            pass
+
+        # Fallback: recursive search for safe_name directly under UPLOAD_FOLDER or sub-folders
         for candidate in upload_root.rglob(safe_name):
-            if candidate.is_file():
+            if candidate.is_file() and (upload_root in candidate.resolve().parents):
                 resp = send_file(candidate)
                 resp.headers["Cache-Control"] = "public, max-age=86400"
                 return resp

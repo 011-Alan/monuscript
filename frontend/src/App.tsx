@@ -18,15 +18,20 @@ import {
 import * as api from './services/api';
 import * as storage from './services/storage';
 
-// Helper to generate a lightweight persistent JPEG thumbnail data URL (< 40KB)
+// Helper to generate a lightweight persistent JPEG thumbnail data URL (< 30KB)
 // so that uploaded monument photos render instantly and survive browser refreshes even offline.
 async function createThumbnailDataUrl(file: File): Promise<string> {
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (e) => {
+      const dataResult = e.target?.result as string;
+      if (!dataResult) {
+        resolve('');
+        return;
+      }
       const img = new Image();
       img.onload = () => {
-        const maxDim = 640;
+        const maxDim = 512;
         let w = img.width;
         let h = img.height;
         if (w > maxDim || h > maxDim) {
@@ -44,15 +49,15 @@ async function createThumbnailDataUrl(file: File): Promise<string> {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', 0.82));
+          resolve(canvas.toDataURL('image/jpeg', 0.80));
         } else {
-          resolve(e.target?.result as string);
+          resolve(dataResult);
         }
       };
-      img.onerror = () => resolve(e.target?.result as string);
-      img.src = e.target?.result as string;
+      img.onerror = () => resolve(dataResult);
+      img.src = dataResult;
     };
-    reader.onerror = () => resolve(URL.createObjectURL(file));
+    reader.onerror = () => resolve('');
     reader.readAsDataURL(file);
   });
 }
@@ -297,7 +302,7 @@ export const App: React.FC = () => {
     try {
       initialImageUrl = await createThumbnailDataUrl(file);
     } catch {
-      initialImageUrl = URL.createObjectURL(file);
+      initialImageUrl = '';
     }
 
     const tempUserMsgId = `user_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -306,9 +311,13 @@ export const App: React.FC = () => {
       conversation_id: targetConvId,
       role: 'user',
       content: 'Uploaded monument photograph for architectural analysis.',
-      image_url: initialImageUrl,
+      image_url: initialImageUrl || null,
       created_at: new Date().toISOString()
     };
+
+    if (initialImageUrl && initialImageUrl.startsWith('data:')) {
+      storage.saveThumbnailCache(tempUserMsgId, initialImageUrl);
+    }
 
     // Immediately save and display user message
     storage.appendLocalMessage(targetConvId, tempUserMsg);
@@ -329,12 +338,28 @@ export const App: React.FC = () => {
       const serverUserMsgId = response.message_ids?.user_message_id || tempUserMsgId;
       const serverAsstMsgId = response.message_ids?.assistant_message_id || `asst_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const persistentImageUrl = response.image?.url ? api.formatImageUrl(response.image.url) : initialImageUrl;
+      const serverThumbnail = (response.image as any)?.thumbnail_url;
 
-      // 3. Update the temporary user message with the server message ID and persistent image URL
+      // Ensure we keep a resilient image data URL that survives page refreshes and server cold starts
+      const robustImageUrl = (initialImageUrl && initialImageUrl.startsWith('data:'))
+        ? initialImageUrl
+        : (serverThumbnail && serverThumbnail.startsWith('data:')
+          ? serverThumbnail
+          : (persistentImageUrl || initialImageUrl));
+
+      if (robustImageUrl && robustImageUrl.startsWith('data:')) {
+        storage.saveThumbnailCache(serverUserMsgId, robustImageUrl);
+        storage.saveThumbnailCache(tempUserMsgId, robustImageUrl);
+        if (persistentImageUrl) {
+          storage.saveThumbnailCache(persistentImageUrl, robustImageUrl);
+        }
+      }
+
+      // 3. Update the temporary user message with the server message ID and robust image URL
       const finalUserMsg: Message = {
         ...tempUserMsg,
         id: serverUserMsgId,
-        image_url: persistentImageUrl || initialImageUrl
+        image_url: robustImageUrl || null
       };
 
       // 4. Construct candidate results or rejection results

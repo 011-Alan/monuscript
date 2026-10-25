@@ -4,13 +4,33 @@ Orchestrates file upload validation, safety checks, inference execution,
 and database persistence.
 """
 
+import io
 import uuid
+import base64
 from pathlib import Path
 from PIL import Image
 
 from config import Config
 from ml.inference import MonumentPredictor
 from database.db import add_message, add_recognition_result
+
+
+def generate_thumbnail_data_url(image_path: Path, max_dim: int = 480) -> str:
+    """
+    Generates a lightweight base64 JPEG thumbnail (< 25KB) so the image
+    can be rendered in <img> tags permanently across page refreshes even
+    if external storage is ephemeral, restarted, or offline.
+    """
+    try:
+        with Image.open(image_path) as img:
+            rgb_img = img.convert("RGB")
+            rgb_img.thumbnail((max_dim, max_dim), Image.Resampling.LANCZOS)
+            buf = io.BytesIO()
+            rgb_img.save(buf, format="JPEG", quality=75, optimize=True)
+            encoded = base64.b64encode(buf.getvalue()).decode("ascii")
+            return f"data:image/jpeg;base64,{encoded}"
+    except Exception:
+        return ""
 
 
 def is_allowed_file(filename: str) -> bool:
@@ -126,8 +146,12 @@ def process_recognition_request(
     else:
         rec_data = predictor.predict_image(str(saved_path))
 
+    thumb_data_url = generate_thumbnail_data_url(saved_path)
+    persistent_db_image_url = thumb_data_url if thumb_data_url else image_web_url
+
     rec_data["image"]["filename"] = saved_path.name
     rec_data["image"]["url"] = image_web_url
+    rec_data["image"]["thumbnail_url"] = persistent_db_image_url
 
     # Persist in DB if conversation_id provided
     if conversation_id and user_id:
@@ -135,7 +159,7 @@ def process_recognition_request(
             conv_id=conversation_id,
             role="user",
             content="Uploaded monument photograph for architectural analysis.",
-            image_url=image_web_url,
+            image_url=persistent_db_image_url,
             user_id=user_id
         )
         asst_msg_id = add_message(
