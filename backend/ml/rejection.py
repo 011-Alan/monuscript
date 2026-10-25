@@ -110,6 +110,18 @@ class RejectionJudge:
 
         if top_score < self.accept_threshold or margin < self.margin_threshold:
             # Uncertain / Ambiguous
+            if runner_class and margin < self.margin_threshold:
+                cand1 = top_class.replace("_", " ").title()
+                cand2 = runner_class.replace("_", " ").title()
+                msg = (
+                    f"This photograph has borderline features between {cand1} ({top_score:.0%}) "
+                    f"and {cand2} ({runner_score:.0%}). "
+                    f"The confidence margin ({margin:.0%}) is below our safety threshold. "
+                    f"Try uploading a clearer, unobstructed photograph focused on the main facade."
+                )
+            else:
+                msg = UNCERTAIN_MESSAGE_TEMPLATE.format(candidate=top_class.replace("_", " ").title(), score=top_score)
+
             return {
                 "accepted": False,
                 "is_uncertain": True,
@@ -120,7 +132,7 @@ class RejectionJudge:
                 "score_margin": margin,
                 "centroid_distance": centroid_dist,
                 "rejection_reason": "ambiguous_margin" if margin < self.margin_threshold else "below_accept_threshold",
-                "message": UNCERTAIN_MESSAGE_TEMPLATE.format(candidate=top_class.replace("_", " ").title(), score=top_score)
+                "message": msg
             }
 
         # Accepted
