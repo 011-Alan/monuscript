@@ -3,9 +3,11 @@ MonuScript - SVM Model Training Script
 Trains a Support Vector Machine (SVM) on handcrafted digital image processing features.
 Adheres strictly to syllabus constraints:
 - Uses shared deterministic feature extraction from backend.image_processing.feature_extractor
-- Fits StandardScaler strictly on training set to prevent data leakage
+- Fits StandardScaler strictly on training set to prevent data leakage (with z-score clipping)
 - Evaluates RBF and Linear SVM kernels with hyperparameter grid search on validation data
 - Computes class centroids for Out-of-Distribution rejection
+- Integrates syllabus-aligned architectural features (16D) to distinguish similar monuments
+- Supports controlled training-set illumination augmentation without leakage
 - Saves complete model artifacts using joblib
 """
 
@@ -16,6 +18,7 @@ import time
 from pathlib import Path
 import numpy as np
 import joblib
+from PIL import Image
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, classification_report
@@ -31,6 +34,10 @@ from image_processing.feature_extractor import (
     FEATURE_GROUPS,
     get_feature_groups_for_config
 )
+from image_processing.transformations import (
+    apply_brightness_contrast,
+    apply_gamma_transformation
+)
 
 DATASET_ROOT = BACKEND_DIR / "data" / "dataset"
 ARTIFACTS_DIR = BACKEND_DIR / "ml" / "model_artifacts"
@@ -38,6 +45,7 @@ ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
 
 MODEL_PIPELINE_PATH = ARTIFACTS_DIR / "svm_pipeline.joblib"
 MODEL_METADATA_PATH = ARTIFACTS_DIR / "model_metadata.json"
+
 
 def apply_feature_group_weights(X, feature_groups=FEATURE_GROUPS, use_weights=True):
     """
@@ -55,8 +63,23 @@ def apply_feature_group_weights(X, feature_groups=FEATURE_GROUPS, use_weights=Tr
         X_weighted[:, s:e] = X_weighted[:, s:e] * scale_factor
     return X_weighted
 
-def load_split_data(split_name="train", use_clahe=True, include_wavelet=False, include_shape=False):
-    """Loads all images and extracts deterministic features for a given partition."""
+
+def load_split_data(
+    split_name="train",
+    use_clahe=True,
+    clahe_clip_limit=2.0,
+    clahe_grid_size=(8, 8),
+    include_wavelet=False,
+    include_shape=False,
+    include_architectural=True,
+    augment_train_illumination=False
+):
+    """
+    Loads all images and extracts deterministic features for a given partition.
+    For the training partition only, optionally synthesizes controlled illumination
+    variations (bright sunlight and cool gamma) using Unit II DIP transformations.
+    Validation and test partitions are never augmented.
+    """
     split_dir = DATASET_ROOT / split_name
     if not split_dir.exists():
         raise FileNotFoundError(f"Split directory not found: {split_dir}")
@@ -66,22 +89,63 @@ def load_split_data(split_name="train", use_clahe=True, include_wavelet=False, i
     y = []
     file_paths = []
 
-    print(f"Loading '{split_name}' set ({len(classes)} classes, use_clahe={use_clahe})...")
+    is_train = (split_name == "train")
+    print(f"Loading '{split_name}' set ({len(classes)} classes, use_clahe={use_clahe}, arch={include_architectural}, aug={augment_train_illumination and is_train})...")
+
     for cls in classes:
         cls_dir = split_dir / cls
         img_files = sorted([f for f in cls_dir.iterdir() if f.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]])
         print(f"  [{cls}] Found {len(img_files)} images")
         for f in img_files:
             try:
+                pil_img = Image.open(f).convert("RGB")
+                # 1. Primary image features
                 feats, _ = extract_features(
-                    str(f),
+                    pil_img,
                     use_clahe=use_clahe,
+                    clahe_clip_limit=clahe_clip_limit,
+                    clahe_grid_size=clahe_grid_size,
                     include_wavelet=include_wavelet,
-                    include_shape=include_shape
+                    include_shape=include_shape,
+                    include_architectural=include_architectural
                 )
                 X.append(feats)
                 y.append(cls)
                 file_paths.append(str(f))
+
+                # 2. Controlled illumination augmentation on training split only
+                if is_train and augment_train_illumination:
+                    arr = np.array(pil_img)
+                    # Warm / bright sunlight variation
+                    bright_arr = apply_brightness_contrast(arr, alpha=1.1, beta=10)
+                    f_bright, _ = extract_features(
+                        Image.fromarray(bright_arr),
+                        use_clahe=use_clahe,
+                        clahe_clip_limit=clahe_clip_limit,
+                        clahe_grid_size=clahe_grid_size,
+                        include_wavelet=include_wavelet,
+                        include_shape=include_shape,
+                        include_architectural=include_architectural
+                    )
+                    X.append(f_bright)
+                    y.append(cls)
+                    file_paths.append(f"{str(f)}#bright")
+
+                    # Overcast / cool gamma variation
+                    cool_arr = apply_gamma_transformation(arr, gamma=1.15)
+                    f_cool, _ = extract_features(
+                        Image.fromarray(cool_arr),
+                        use_clahe=use_clahe,
+                        clahe_clip_limit=clahe_clip_limit,
+                        clahe_grid_size=clahe_grid_size,
+                        include_wavelet=include_wavelet,
+                        include_shape=include_shape,
+                        include_architectural=include_architectural
+                    )
+                    X.append(f_cool)
+                    y.append(cls)
+                    file_paths.append(f"{str(f)}#cool")
+
             except Exception as e:
                 print(f"  [WARN] Failed to process {f.name}: {e}")
 
@@ -89,12 +153,15 @@ def load_split_data(split_name="train", use_clahe=True, include_wavelet=False, i
     y = np.array(y)
     return X, y, classes, file_paths
 
+
 def train_and_tune_model(
     use_clahe=True,
     clahe_clip_limit=2.0,
     clahe_grid_size=(8, 8),
     include_wavelet=False,
     include_shape=False,
+    include_architectural=True,
+    augment_train_illumination=True,
     rejection_config=None
 ):
     if rejection_config is None:
@@ -107,35 +174,44 @@ def train_and_tune_model(
     start_time = time.time()
     feature_groups, feature_dim = get_feature_groups_for_config(
         include_wavelet=include_wavelet,
-        include_shape=include_shape
+        include_shape=include_shape,
+        include_architectural=include_architectural
     )
 
     print("==================================================")
     print(" MonuScript - Support Vector Machine Model Training ")
-    print(f" Config: CLAHE={use_clahe}, Wavelet={include_wavelet}, Shape={include_shape}, Dim={feature_dim}")
+    print(f" Config: CLAHE={use_clahe}, Arch={include_architectural}, Wavelet={include_wavelet}, Shape={include_shape}, Aug={augment_train_illumination}, Dim={feature_dim}")
     print("==================================================")
 
     # 1. Load Train and Validation sets
     X_train, y_train, classes, train_paths = load_split_data(
         "train",
         use_clahe=use_clahe,
+        clahe_clip_limit=clahe_clip_limit,
+        clahe_grid_size=clahe_grid_size,
         include_wavelet=include_wavelet,
-        include_shape=include_shape
+        include_shape=include_shape,
+        include_architectural=include_architectural,
+        augment_train_illumination=augment_train_illumination
     )
     X_val, y_val, _, val_paths = load_split_data(
         "val",
         use_clahe=use_clahe,
+        clahe_clip_limit=clahe_clip_limit,
+        clahe_grid_size=clahe_grid_size,
         include_wavelet=include_wavelet,
-        include_shape=include_shape
+        include_shape=include_shape,
+        include_architectural=include_architectural,
+        augment_train_illumination=False
     )
 
     print(f"\nTraining set size: {X_train.shape[0]} samples, {X_train.shape[1]} features")
     print(f"Validation set size: {X_val.shape[0]} samples")
 
-    # 2. Fit StandardScaler on Training Set ONLY
+    # 2. Fit StandardScaler on Training Set ONLY, with outlier clipping to [-5.0, 5.0]
     scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_val_scaled = scaler.transform(X_val)
+    X_train_scaled = np.clip(scaler.fit_transform(X_train), -5.0, 5.0)
+    X_val_scaled = np.clip(scaler.transform(X_val), -5.0, 5.0)
 
     # 3. Evaluate weighted vs unweighted features
     best_config = None
@@ -143,8 +219,8 @@ def train_and_tune_model(
     best_model = None
 
     # Hyperparameter search space
-    kernels = ["rbf", "linear"]
-    C_values = [0.1, 0.5, 1.0, 2.0, 5.0, 10.0]
+    kernels = ["linear", "rbf"]
+    C_values = [0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0]
     gamma_values = ["scale", "auto", 0.01, 0.005]
     weighting_options = [False, True]
 
@@ -183,7 +259,7 @@ def train_and_tune_model(
 
     print(f"\nOptimal Model Config: {best_config}")
 
-    # Retrain on combined train + val with the optimal hyperparameters to maximize data utilization
+    # Retrain on train set with optimal parameters
     final_use_weights = best_config["use_feature_weights"]
     final_X_train = apply_feature_group_weights(X_train_scaled, feature_groups=feature_groups, use_weights=final_use_weights)
     final_clf = SVC(
@@ -195,7 +271,7 @@ def train_and_tune_model(
     )
     final_clf.fit(final_X_train, y_train)
 
-    # Compute class centroids in scaled/weighted space for Out-of-Distribution checks
+    # Compute class centroids in scaled/weighted space for Out-of-Distribution distance checks
     class_centroids = {}
     for cls in classes:
         cls_mask = (y_train == cls)
@@ -217,6 +293,8 @@ def train_and_tune_model(
         "clahe_grid_size": list(clahe_grid_size),
         "include_wavelet": include_wavelet,
         "include_shape": include_shape,
+        "include_architectural": include_architectural,
+        "augment_train_illumination": augment_train_illumination,
         "rejection_config": rejection_config
     }
 
@@ -240,6 +318,8 @@ def train_and_tune_model(
             "clahe_grid_size": list(clahe_grid_size),
             "include_wavelet": include_wavelet,
             "include_shape": include_shape,
+            "include_architectural": include_architectural,
+            "augment_train_illumination": augment_train_illumination,
             "rejection_config": rejection_config
         },
         "samples_per_split": {
@@ -253,6 +333,7 @@ def train_and_tune_model(
     print(f"[OK] Model metadata saved to {MODEL_METADATA_PATH}")
 
     return pipeline_artifact, metadata
+
 
 if __name__ == "__main__":
     train_and_tune_model()

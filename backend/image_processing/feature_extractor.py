@@ -8,6 +8,7 @@ Combines syllabus-aligned traditional digital image processing feature extractor
 Optional syllabus enhancement groups:
 5. 2D Discrete Wavelet Transform (DWT) Multiresolution Statistics (16 features) - Unit III
 6. Morphological Shape Descriptors (9 features) - Unit I & IV
+7. Monument-Specific Architectural Descriptors (16 features) - Unit I, II & IV
 
 Strictly deterministic, identical feature ordering and sizing for training and inference.
 """
@@ -19,6 +20,11 @@ from .edge_features import extract_edge_features
 from .texture_features import extract_texture_features
 from .wavelet_features import extract_wavelet_features, WAVELET_FEATURE_DIM
 from .shape_features import extract_shape_features, SHAPE_FEATURE_DIM
+from .architectural_features import (
+    extract_architectural_features,
+    ARCHITECTURAL_FEATURE_DIM,
+    ARCHITECTURAL_FEATURE_NAMES
+)
 
 BASE_FEATURE_GROUPS = {
     "histogram": {
@@ -55,7 +61,7 @@ FEATURE_GROUPS = BASE_FEATURE_GROUPS
 TOTAL_FEATURE_DIM = 139
 
 
-def get_feature_groups_for_config(include_wavelet=False, include_shape=False):
+def get_feature_groups_for_config(include_wavelet=False, include_shape=False, include_architectural=False):
     """
     Constructs the feature group boundary dictionary for a specified feature configuration.
     """
@@ -81,6 +87,16 @@ def get_feature_groups_for_config(include_wavelet=False, include_shape=False):
             "default_weight": 0.15
         }
         current_idx += SHAPE_FEATURE_DIM
+
+    if include_architectural:
+        groups["architectural"] = {
+            "start": current_idx,
+            "end": current_idx + ARCHITECTURAL_FEATURE_DIM,
+            "length": ARCHITECTURAL_FEATURE_DIM,
+            "description": "Monument-specific architectural descriptors: central arch void, upper cornice dominance, tapering ratio, window opening density, dome circularity (16 values)",
+            "default_weight": 0.40
+        }
+        current_idx += ARCHITECTURAL_FEATURE_DIM
 
     return groups, current_idx
 
@@ -115,12 +131,18 @@ def extract_hsv_color_features(hsv_image):
     return np.concatenate([h_norm, s_norm, v_norm]).astype(np.float32)
 
 
-def extract_features_from_preprocessed(preprocessed_dict, include_wavelet=False, include_shape=False):
+def extract_features_from_preprocessed(
+    preprocessed_dict,
+    include_wavelet=False,
+    include_shape=False,
+    include_architectural=False
+):
     """
     Extracts the feature vector from preprocessed image dictionary according to configuration.
     """
     gray = preprocessed_dict["gray"]
     hsv = preprocessed_dict["hsv"]
+    rgb = preprocessed_dict.get("rgb")
 
     hist_feats = extract_histogram_features(gray)
     edge_feats = extract_edge_features(gray)
@@ -137,9 +159,18 @@ def extract_features_from_preprocessed(preprocessed_dict, include_wavelet=False,
         shape_feats = extract_shape_features(gray)
         parts.append(shape_feats)
 
+    if include_architectural:
+        arch_feats = extract_architectural_features(gray, rgb_image=rgb)
+        parts.append(arch_feats)
+
     feature_vec = np.concatenate(parts).astype(np.float32)
 
-    expected_dim = 139 + (WAVELET_FEATURE_DIM if include_wavelet else 0) + (SHAPE_FEATURE_DIM if include_shape else 0)
+    expected_dim = (
+        139
+        + (WAVELET_FEATURE_DIM if include_wavelet else 0)
+        + (SHAPE_FEATURE_DIM if include_shape else 0)
+        + (ARCHITECTURAL_FEATURE_DIM if include_architectural else 0)
+    )
     assert len(feature_vec) == expected_dim, f"Expected {expected_dim} features, got {len(feature_vec)}"
     return feature_vec
 
@@ -150,7 +181,8 @@ def extract_features(
     clahe_clip_limit=2.0,
     clahe_grid_size=(8, 8),
     include_wavelet=False,
-    include_shape=False
+    include_shape=False,
+    include_architectural=False
 ):
     """
     End-to-end feature extraction from raw image input.
@@ -161,6 +193,7 @@ def extract_features(
         clahe_grid_size: tuple, CLAHE grid size.
         include_wavelet: bool, whether to append 16 DWT features.
         include_shape: bool, whether to append 9 morphological shape features.
+        include_architectural: bool, whether to append 16 architectural features.
     Returns:
         feature_vector: np.ndarray of shape (N,), dtype float32
         preprocessed_dict: dictionary with intermediate representations
@@ -174,6 +207,7 @@ def extract_features(
     feats = extract_features_from_preprocessed(
         prep,
         include_wavelet=include_wavelet,
-        include_shape=include_shape
+        include_shape=include_shape,
+        include_architectural=include_architectural
     )
     return feats, prep

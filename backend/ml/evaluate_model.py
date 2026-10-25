@@ -22,7 +22,11 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
-from image_processing.feature_extractor import extract_features, extract_features_from_preprocessed, FEATURE_GROUPS
+from image_processing.feature_extractor import (
+    extract_features,
+    extract_features_from_preprocessed,
+    FEATURE_GROUPS
+)
 from image_processing.preprocessing import preprocess_image_for_features
 from image_processing.transformations import apply_brightness_contrast, apply_gamma_transformation
 from ml.rejection import RejectionJudge
@@ -32,17 +36,19 @@ ARTIFACTS_DIR = BACKEND_DIR / "ml" / "model_artifacts"
 MODEL_PIPELINE_PATH = ARTIFACTS_DIR / "svm_pipeline.joblib"
 EVAL_OUTPUT_PATH = ARTIFACTS_DIR / "evaluation_results.json"
 
-def apply_feature_group_weights(X, use_weights=True):
+
+def apply_feature_group_weights(X, feature_groups=FEATURE_GROUPS, use_weights=True):
     if not use_weights:
         return X
     X_weighted = X.copy()
-    for group_name, info in FEATURE_GROUPS.items():
+    for group_name, info in feature_groups.items():
         s = info["start"]
         e = info["end"]
         w = info["default_weight"]
         scale_factor = np.sqrt(w)
         X_weighted[:, s:e] = X_weighted[:, s:e] * scale_factor
     return X_weighted
+
 
 def evaluate_test_set():
     print("==================================================")
@@ -58,11 +64,14 @@ def evaluate_test_set():
     classes = pipeline["classes"]
     use_weights = pipeline.get("use_feature_weights", True)
     class_centroids = pipeline.get("class_centroids")
+    feature_groups = pipeline.get("feature_groups", FEATURE_GROUPS)
+
     use_clahe = pipeline.get("use_clahe", False)
     clahe_clip_limit = pipeline.get("clahe_clip_limit", 2.0)
     clahe_grid_size = tuple(pipeline.get("clahe_grid_size", (8, 8)))
     include_wavelet = pipeline.get("include_wavelet", False)
     include_shape = pipeline.get("include_shape", False)
+    include_architectural = pipeline.get("include_architectural", False)
     rejection_cfg = pipeline.get("rejection_config", {})
 
     judge = RejectionJudge(
@@ -96,10 +105,11 @@ def evaluate_test_set():
                 clahe_clip_limit=clahe_clip_limit,
                 clahe_grid_size=clahe_grid_size,
                 include_wavelet=include_wavelet,
-                include_shape=include_shape
+                include_shape=include_shape,
+                include_architectural=include_architectural
             )
-            scaled_feats = scaler.transform(feats.reshape(1, -1))
-            proc_feats = apply_feature_group_weights(scaled_feats, use_weights=use_weights)
+            scaled_feats = np.clip(scaler.transform(feats.reshape(1, -1)), -5.0, 5.0)
+            proc_feats = apply_feature_group_weights(scaled_feats, feature_groups=feature_groups, use_weights=use_weights)
 
             probs = clf.predict_proba(proc_feats)[0]
             elapsed_ms = (time.time() - t0) * 1000.0
@@ -151,10 +161,11 @@ def evaluate_test_set():
                     clahe_clip_limit=clahe_clip_limit,
                     clahe_grid_size=clahe_grid_size,
                     include_wavelet=include_wavelet,
-                    include_shape=include_shape
+                    include_shape=include_shape,
+                    include_architectural=include_architectural
                 )
-                scaled_feats = scaler.transform(feats.reshape(1, -1))
-                proc_feats = apply_feature_group_weights(scaled_feats, use_weights=use_weights)
+                scaled_feats = np.clip(scaler.transform(feats.reshape(1, -1)), -5.0, 5.0)
+                proc_feats = apply_feature_group_weights(scaled_feats, feature_groups=feature_groups, use_weights=use_weights)
                 probs = clf.predict_proba(proc_feats)[0]
                 decision = judge.evaluate(probs, classes, scaled_features=proc_feats[0])
                 if decision["accepted"]:
@@ -179,7 +190,7 @@ def evaluate_test_set():
     # 3. Robustness Transformations on Test Set
     print("\n[Robustness Analysis on Transformed Test Images]")
     robustness_results = {}
-    
+
     transform_scenarios = [
         ("brightness_darker", lambda arr: apply_brightness_contrast(arr, alpha=1.0, beta=-25)),
         ("brightness_brighter", lambda arr: apply_brightness_contrast(arr, alpha=1.0, beta=25)),
@@ -201,13 +212,23 @@ def evaluate_test_set():
                     continue
                 try:
                     # Preprocess and apply transformation to grayscale/rgb
-                    prep = preprocess_image_for_features(str(img_path))
+                    prep = preprocess_image_for_features(
+                        str(img_path),
+                        use_clahe=use_clahe,
+                        clahe_clip_limit=clahe_clip_limit,
+                        clahe_grid_size=clahe_grid_size
+                    )
                     transformed_gray = func(prep["gray"])
                     prep["gray"] = transformed_gray
-                    feats = extract_features_from_preprocessed(prep)
+                    feats = extract_features_from_preprocessed(
+                        prep,
+                        include_wavelet=include_wavelet,
+                        include_shape=include_shape,
+                        include_architectural=include_architectural
+                    )
 
-                    scaled = scaler.transform(feats.reshape(1, -1))
-                    proc = apply_feature_group_weights(scaled, use_weights=use_weights)
+                    scaled = np.clip(scaler.transform(feats.reshape(1, -1)), -5.0, 5.0)
+                    proc = apply_feature_group_weights(scaled, feature_groups=feature_groups, use_weights=use_weights)
                     pred = clf.predict(proc)[0]
 
                     if pred == cls:
@@ -243,6 +264,7 @@ def evaluate_test_set():
     print(f"\n[OK] Evaluation report saved to {EVAL_OUTPUT_PATH}")
 
     return full_report
+
 
 if __name__ == "__main__":
     evaluate_test_set()

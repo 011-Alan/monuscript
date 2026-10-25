@@ -44,6 +44,7 @@ class MonumentPredictor:
         self.clahe_grid_size = tuple(self.pipeline.get("clahe_grid_size", (8, 8)))
         self.include_wavelet = self.pipeline.get("include_wavelet", False)
         self.include_shape = self.pipeline.get("include_shape", False)
+        self.include_architectural = self.pipeline.get("include_architectural", False)
 
         rejection_cfg = self.pipeline.get("rejection_config", {})
         self.judge = RejectionJudge(
@@ -96,12 +97,13 @@ class MonumentPredictor:
             clahe_clip_limit=self.clahe_clip_limit,
             clahe_grid_size=self.clahe_grid_size,
             include_wavelet=self.include_wavelet,
-            include_shape=self.include_shape
+            include_shape=self.include_shape,
+            include_architectural=self.include_architectural
         )
         orig_w, orig_h = prep["original_size"]
 
-        # 2. Scaling & Weighting
-        scaled_feats = self.scaler.transform(feats.reshape(1, -1))
+        # 2. Scaling & Weighting with clipping to [-5.0, 5.0] to prevent outlier centroid explosions
+        scaled_feats = np.clip(self.scaler.transform(feats.reshape(1, -1)), -5.0, 5.0)
         proc_feats = self._apply_weights(scaled_feats)
 
         # 3. Model Probabilities & Classification
@@ -196,9 +198,10 @@ class MonumentPredictor:
                 clahe_clip_limit=self.clahe_clip_limit,
                 clahe_grid_size=self.clahe_grid_size,
                 include_wavelet=self.include_wavelet,
-                include_shape=self.include_shape
+                include_shape=self.include_shape,
+                include_architectural=self.include_architectural
             )
-            scaled_feats = self.scaler.transform(feats.reshape(1, -1))
+            scaled_feats = np.clip(self.scaler.transform(feats.reshape(1, -1)), -5.0, 5.0)
             proc_feats = self._apply_weights(scaled_feats)
             probs = self.classifier.predict_proba(proc_feats)[0]
             decision = self.judge.evaluate(probs, self.classes, scaled_features=proc_feats[0])

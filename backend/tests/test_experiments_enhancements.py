@@ -1,12 +1,13 @@
 """
-MonuScript - Unit & Integration Tests for Experimental DIP Enhancements (E1-E6)
+MonuScript - Unit & Integration Tests for Experimental DIP Enhancements (E1-E7)
 Tests:
 1. CLAHE in LAB color space (preprocessing)
 2. 2D Haar Wavelet Feature Extraction (Unit III)
 3. Morphological Silhouette Shape Descriptors (Unit I & IV)
-4. PCA Dimensionality Reduction consistency (Unit IV)
-5. Multi-evidence Rejection Mechanism calibration (Unit V)
-6. Backward compatibility with baseline 139D feature extraction
+4. Master Feature Extractor Configurations & Backward Compatibility
+5. PCA Dimensionality Reduction consistency (Unit IV)
+6. Multi-evidence Rejection Mechanism calibration (Unit V)
+7. Monument-Specific Architectural Descriptors (Unit I, II & IV)
 """
 
 import sys
@@ -34,6 +35,11 @@ from image_processing.shape_features import (
     extract_shape_features,
     SHAPE_FEATURE_DIM,
     SHAPE_FEATURE_NAMES
+)
+from image_processing.architectural_features import (
+    extract_architectural_features,
+    ARCHITECTURAL_FEATURE_DIM,
+    ARCHITECTURAL_FEATURE_NAMES
 )
 from image_processing.feature_extractor import (
     extract_features,
@@ -106,7 +112,6 @@ def test_wavelet_energy_non_negative():
     gray[32:96, 32:96] = 255  # High-contrast square
 
     wav_feats = extract_wavelet_features(gray)
-    # Energy features are indexed at 1, 5, 9, 13
     energies = [wav_feats[1], wav_feats[5], wav_feats[9], wav_feats[13]]
     for e in energies:
         assert e >= 0.0
@@ -139,17 +144,16 @@ def test_shape_degenerate_mask_handling():
 def test_shape_geometric_properties():
     """Verify shape descriptors capture aspect ratio on tall vs wide objects."""
     # Tall synthetic object (mimicking Qutub Minar silhouette)
-    tall_img = np.full((STANDARD_HEIGHT, STANDARD_WIDTH), 255, dtype=np.uint8)  # Bright sky
-    tall_img[20:280, 130:170] = 30  # Dark tall pillar in center
+    tall_img = np.full((STANDARD_HEIGHT, STANDARD_WIDTH), 255, dtype=np.uint8)
+    tall_img[20:280, 130:170] = 30
     tall_feats = extract_shape_features(tall_img)
 
     # Wide synthetic object
     wide_img = np.full((STANDARD_HEIGHT, STANDARD_WIDTH), 255, dtype=np.uint8)
-    wide_img[180:260, 40:260] = 30  # Dark wide base
+    wide_img[180:260, 40:260] = 30
     wide_feats = extract_shape_features(wide_img)
 
     # Aspect ratio is index 1 (width / height)
-    # Tall object aspect ratio should be lower than wide object aspect ratio
     assert tall_feats[1] < wide_feats[1]
 
 
@@ -167,8 +171,12 @@ def test_extractor_backward_compatibility():
 
 
 def test_extractor_enhanced_configurations():
-    """Verify extract_features with wavelet and shape flags expands vector cleanly."""
+    """Verify extract_features with wavelet, shape, and architectural flags expands vector cleanly."""
     img = Image.new("RGB", (128, 128), (150, 120, 90))
+
+    # Architectural only (139 + 16 = 155)
+    f_arch, _ = extract_features(img, include_architectural=True)
+    assert len(f_arch) == 139 + ARCHITECTURAL_FEATURE_DIM
 
     # Wavelet only (139 + 16 = 155)
     f_wav, _ = extract_features(img, include_wavelet=True)
@@ -178,15 +186,15 @@ def test_extractor_enhanced_configurations():
     f_shp, _ = extract_features(img, include_shape=True)
     assert len(f_shp) == 139 + SHAPE_FEATURE_DIM
 
-    # Both (139 + 16 + 9 = 164)
-    f_both, _ = extract_features(img, include_wavelet=True, include_shape=True)
-    assert len(f_both) == 139 + WAVELET_FEATURE_DIM + SHAPE_FEATURE_DIM
+    # All enhancements (139 + 16 + 9 + 16 = 180)
+    f_all, _ = extract_features(img, include_wavelet=True, include_shape=True, include_architectural=True)
+    assert len(f_all) == 139 + WAVELET_FEATURE_DIM + SHAPE_FEATURE_DIM + ARCHITECTURAL_FEATURE_DIM
 
     # Verify feature group mapping matches
-    groups, total_dim = get_feature_groups_for_config(include_wavelet=True, include_shape=True)
-    assert total_dim == 164
-    assert "wavelet" in groups
-    assert "shape" in groups
+    groups, total_dim = get_feature_groups_for_config(include_architectural=True)
+    assert total_dim == 155
+    assert "architectural" in groups
+    assert groups["architectural"]["length"] == 16
 
 
 # =====================================================================
@@ -203,7 +211,6 @@ def test_pca_variance_retention():
     train_pca = pca.fit_transform(synthetic_train)
     test_pca = pca.transform(synthetic_test)
 
-    # Retained dimensions should be significantly fewer than 139
     assert train_pca.shape[1] < 139
     assert test_pca.shape[1] == train_pca.shape[1]
     assert np.sum(pca.explained_variance_ratio_) >= 0.95
@@ -241,3 +248,46 @@ def test_calibrated_rejection_decisions():
     assert d3["accepted"] is False
     assert d3["is_uncertain"] is False
     assert "Haven't seen this one before" in d3["message"]
+
+
+# =====================================================================
+# 7. Monument-Specific Architectural Feature Extraction Tests
+# =====================================================================
+
+def test_architectural_feature_dimensions():
+    """Verify architectural extraction yields strictly 16 finite descriptors."""
+    gray = np.random.randint(0, 256, (STANDARD_HEIGHT, STANDARD_WIDTH), dtype=np.uint8)
+    rgb = np.random.randint(0, 256, (STANDARD_HEIGHT, STANDARD_WIDTH, 3), dtype=np.uint8)
+    arch_feats = extract_architectural_features(gray, rgb_image=rgb)
+
+    assert len(arch_feats) == ARCHITECTURAL_FEATURE_DIM
+    assert arch_feats.dtype == np.float32
+    assert len(ARCHITECTURAL_FEATURE_NAMES) == 16
+    assert not np.any(np.isnan(arch_feats))
+    assert not np.any(np.isinf(arch_feats))
+
+
+def test_architectural_feature_degenerate_handling():
+    """Verify architectural extractor handles blank image without crashing or dividing by zero."""
+    blank_gray = np.zeros((STANDARD_HEIGHT, STANDARD_WIDTH), dtype=np.uint8)
+    arch_feats = extract_architectural_features(blank_gray)
+
+    assert len(arch_feats) == ARCHITECTURAL_FEATURE_DIM
+    assert np.all(arch_feats == 0.0)
+
+
+def test_architectural_feature_cornice_and_window_distinction():
+    """Verify architectural features capture upper horizontal edges vs repetitive window patterns."""
+    # Synthetic image with strong upper horizontal line (India Gate cornice)
+    cornice_img = np.full((STANDARD_HEIGHT, STANDARD_WIDTH), 128, dtype=np.uint8)
+    cornice_img[40:50, :] = 255
+    feats_cornice = extract_architectural_features(cornice_img)
+
+    # Synthetic image with vertical line (mimicking column shaft)
+    column_img = np.full((STANDARD_HEIGHT, STANDARD_WIDTH), 128, dtype=np.uint8)
+    column_img[:, 120:136] = 255
+    feats_column = extract_architectural_features(column_img)
+
+    # Feature index 1 is india_gate_cornice_dominance (gy - gx)/(gx + gy)
+    # The horizontal cornice image has higher cornice dominance than vertical column
+    assert feats_cornice[1] > feats_column[1]
