@@ -145,11 +145,9 @@ def process_recognition_request(
         rec_data = predictor.predict_multiple_candidates(str(saved_path))
     else:
         rec_data = predictor.predict_image(str(saved_path))
-        # If single recognition did not accept, check whether image is a multi-monument collage
-        if not rec_data.get("accepted"):
-            multi_res = predictor.predict_multiple_candidates(str(saved_path))
-            if multi_res.get("accepted") and len(multi_res.get("results", [])) >= 2:
-                rec_data = multi_res
+        # When multi-monument sliding scan is OFF, strictly return the first (primary) candidate alone
+        if rec_data.get("results") and len(rec_data["results"]) > 1:
+            rec_data["results"] = [rec_data["results"][0]]
 
     thumb_data_url = generate_thumbnail_data_url(saved_path)
     persistent_db_image_url = thumb_data_url if thumb_data_url else image_web_url

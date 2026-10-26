@@ -363,8 +363,13 @@ export const App: React.FC = () => {
       };
 
       // 4. Construct candidate results or rejection results
-      const resultsList: StoredResult[] = (response.results && response.results.length > 0)
-        ? response.results.map((r: any) => ({
+      // If multi-candidate sliding scan is OFF, strictly display the first (top-1) monument alone
+      const effectiveResults = (!multiMode && response.results && response.results.length > 0)
+        ? [response.results[0]]
+        : (response.results || []);
+
+      const resultsList: StoredResult[] = (effectiveResults.length > 0)
+        ? effectiveResults.map((r: any) => ({
             id: `res_${Math.random().toString(36).slice(2, 9)}`,
             monument_id: r.monument_id,
             score: r.score,
